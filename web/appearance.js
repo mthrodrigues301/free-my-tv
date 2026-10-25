@@ -9,7 +9,7 @@ var Glass = (function () {
     var menuAlpha = 0.5 + alpha * 0.5;
     var menuFill = 'linear-gradient(135deg,rgba(30,36,48,' + menuAlpha + '),rgba(12,16,26,' + Math.min(1, menuAlpha + 0.12) + '))';
     style.textContent = '.sheet{background:rgba(0,0,0,' + (alpha * 0.35) + ')}' +
-      '#settings .box,#shelfedit .box,#langpick .box,#citypick .box,#recommendations .box,#widgetpick .box,#widgetorder .box{background:' + menuFill + ';border:1px solid rgba(255,255,255,.45);box-shadow:inset 0 1px 1px rgba(255,255,255,.6),0 22px 70px rgba(0,0,0,.28);text-shadow:0 1px 6px rgba(0,0,0,.85)}' +
+      '#text-setting .box,#settings .box,#shelfedit .box,#langpick .box,#citypick .box,#recommendations .box,#widgetpick .box,#widgetorder .box{background:' + menuFill + ';border:1px solid rgba(255,255,255,.45);box-shadow:inset 0 1px 1px rgba(255,255,255,.6),0 22px 70px rgba(0,0,0,.28);text-shadow:0 1px 6px rgba(0,0,0,.85)}' +
       '#platter,.night #platter{background:' + fill + ';border:1px solid rgba(255,255,255,.45)}';
   }
   return {apply: apply};

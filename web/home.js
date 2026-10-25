@@ -22,6 +22,7 @@
 
   function sym(name, parent, size) {
     var s = el('span', 'sym', parent);
+    if (name === 'search') { s.className += ' search-symbol'; return s; }
     s.style.webkitMaskImage = 'url(symbols/' + name + '.png)';
     s.style.maskImage = 'url(symbols/' + name + '.png)';
     if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; }
@@ -294,11 +295,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', RECS: 'recs', DETAILS: 'details', PHOTOS: 'photos', WIDGETS: 'widgets', WIDGETPICK: 'widgetpick', WIDGETORDER: 'widgetorder'};
+  var Z = {SEARCH: 'search', TEXT: 'text', TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', RECS: 'recs', DETAILS: 'details', PHOTOS: 'photos', WIDGETS: 'widgets', WIDGETPICK: 'widgetpick', WIDGETORDER: 'widgetorder'};
   var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, widget: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.DETAILS || st.zone === Z.RECS || st.zone === Z.CITY || (st.zone === Z.WIDGETPICK || st.zone === Z.WIDGETORDER); }
+  function sheetOpen() { return st.zone === Z.SEARCH || st.zone === Z.TEXT || st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.DETAILS || st.zone === Z.RECS || st.zone === Z.CITY || (st.zone === Z.WIDGETPICK || st.zone === Z.WIDGETORDER); }
 
   function updateFocus() {
     var i, list;
@@ -310,6 +311,8 @@
     list = $('buttons').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === TAB_COUNT + i);
     setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= TAB_COUNT);
+    loadCardImages();
+    Metrics.setVisible((st.zone === Z.WIDGETS || st.zone === Z.DRAWER) && !!$('performance-widget'));
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
     var photoOffset = st.tab >= 3 ? Math.max(0, Math.min(Math.max(0, cards.length * 590 - 1800), st.card * 590 - 590)) : 0;
@@ -372,10 +375,10 @@
     }
     var buttons = $('buttons');
     buttons.innerHTML = '';
-    var defs = [['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
-    for (var b = 0; b < 3; b++) {
-      var r = el('button', 'round' + (b === 2 ? ' last' : ''), buttons);
-      r.style.left = (1596 + 88 * b) + 'px';
+    var defs = [['search', tr('Search titles')], ['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
+    for (var b = 0; b < 4; b++) {
+      var r = el('button', 'round' + (b === 3 ? ' last' : ''), buttons);
+      r.style.left = (1508 + 88 * b) + 'px';
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
       hover(r, Z.TOP, TAB_COUNT + b);
@@ -393,6 +396,18 @@
   }
 
   // MARK: - Picks and background
+
+  function loadCardImages() {
+    if (st.tab === 5) return;
+    var nodes = $('cards').querySelectorAll('.card .img');
+    for (var i = 0; i < nodes.length; i++) {
+      if (st.tab >= 3 && (i < st.card - 2 || i > st.card + 3)) continue;
+      var n = nodes[i], url = n.getAttribute('data-src');
+      if (!url) continue;
+      n.removeAttribute('data-src');
+      (function (target, src) { var image = new Image(); target.className = 'img skeleton'; image.onload = function () { target.style.backgroundImage = 'url(' + src + ')'; target.className = 'img'; }; image.onerror = function () { target.className = 'img'; }; image.src = src; })(n, url);
+    }
+  }
 
   function renderCards() {
     if (st.tab === 5) {
@@ -416,7 +431,7 @@
       card.style.left = (st.tab >= 3 ? 80 + c * 590 : rects[c][0]) + 'px';
       card.style.width = (st.tab >= 3 ? 550 : rects[c][1]) + 'px';
       var img = el('div', 'img', card);
-      img.style.backgroundImage = 'url(' + (st.tab === 5 ? p.backdrop : Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780')) + ')';
+      img.setAttribute('data-src', Data.image(p.backdrop, st.tab >= 3 ? 'w780' : c === 0 ? 'w1280' : 'w500'));
       if (st.tab !== 5) el('div', 'name', card, p.title);
       if (st.tab < 3 && c === 0 && p.meta) el('div', 'meta', card, p.meta);
       hover(card, Z.CARDS, c);
@@ -703,9 +718,13 @@
     if (right) { right.style.visibility = edges.right ? '' : 'hidden'; right.disabled = !edges.right; }
   }
 
+  var panelsKey = '';
   function renderPanels() {
     if (widgetDrag) { widgetRenderPending = true; return; }
     var d = $('drawer'), old = $('widgets'), oldHint = $('widget-hint');
+    var panelKey = JSON.stringify([Prefs.version, I18N.lang, Data.weather, Data.prices, Metrics.enabled(), selectedWidgets()]);
+    if (old && panelKey === panelsKey) return;
+    panelsKey = panelKey;
     if (old) d.removeChild(old);
     if (oldHint) d.removeChild(oldHint);
     if ($('widget-prev')) d.removeChild($('widget-prev'));
@@ -877,6 +896,7 @@
     setClass($('langpick'), 'open', false);
     langHint = null;
     TitleDetails.hide();
+    MediaSearch.hide(); TextSetting.hide();
     RecommendationSettings.hide();
     CityPicker.hide();
     WidgetPicker.hide();
@@ -887,6 +907,7 @@
 
   // MARK: - Home Settings
 
+  var settingsPage = '';
   function settingRows() {
     var unit = Prefs.temperature(), theme = Prefs.theme();
     var auto = tr('Automatic'), picked = pickedLanguage();
@@ -925,7 +946,17 @@
       step: function () { if (window.Metrics) { Metrics.toggle(); renderPanels(); } }});
     rows.push({label: tr('Shelf'), value: '›', step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('TV Settings'), value: '›', step: function (d) { if (d >= 0) tvSettings(); }});
-    return rows;
+    rows.push({label: tr('Search titles'), value: '›', step: function () { openSearch(); }});
+    rows.push({label: tr('New composition'), value: '›', step: function () { if (st.tab === 5) PhotoGallery.reshuffle(); toast(tr('New composition')); }});
+    rows.push({label: tr('Screensaver style'), value: {dvd: tr('DVD clock'), original: tr('Original'), photos: tr('Photos')}[Prefs.saverMode()], step: function (d) { cycle('saverMode', ['dvd', 'original', 'photos'], Prefs.saverMode(), d); }});
+    rows.push({label: tr('Custom message'), value: Prefs.saverText() || '›', step: function () {
+      setClass($('settings'), 'open', false); st.zone = Z.TEXT;
+      TextSetting.open(tr('Custom message'), Prefs.saverText(), function (value) { Prefs.set('saverText', value); }, openSettings);
+    }});
+    var groups = [tr('Appearance'), tr('Weather'), tr('Widgets'), tr('Content'), tr('Photos'), tr('Screensaver'), tr('Apps and system')];
+    var membership = [[tr('Language'), tr('Theme'), tr('Glass transparency')], [tr('Temperature'), tr('Weather widget'), tr('Weather city'), tr('Forecast')], [tr('Quotes widget'), 'Bitcoin', 'Ethereum', 'Solana', tr('Dollar'), tr('Widget order'), tr('Performance panel')], [tr('TMDB recommendations'), tr('Search titles')], [tr('New composition')], [tr('Screensaver style'), tr('Custom message'), tr('Preview screensaver')], [tr('Shelf'), tr('TV Settings')]];
+    if (settingsPage) return rows.filter(function (r) { return membership[groups.indexOf(settingsPage)].indexOf(r.label) >= 0; });
+    return groups.map(function (name) { return {label: name, value: '›', step: function () { settingsPage = name; st.row = 0; }}; });
   }
 
   function openRecommendations() {
@@ -962,7 +993,7 @@
     box.innerHTML = '';
     var title = el('div', 'title', box);
     sym('settings', title);
-    title.appendChild(document.createTextNode(tr('Home Settings')));
+    title.appendChild(document.createTextNode(settingsPage || tr('Home Settings')));
     var list = el('div', 'list', box), holder = el('div', 'rows', list);
     rowsNow = settingRows();
     list.style.height = Math.min(rowsNow.length, 7) * 78 + 'px';
@@ -982,6 +1013,7 @@
   }
 
   function openSettings() {
+    if ([Z.SETTINGS, Z.CITY, Z.LANG, Z.RECS, Z.WIDGETORDER, Z.EDIT, Z.TEXT].indexOf(st.zone) < 0) settingsPage = '';
     st.zone = Z.SETTINGS;
     st.row = 0;
     renderSettings();
@@ -1112,6 +1144,11 @@
     };
   }
 
+  function openSearch() {
+    setClass($('settings'), 'open', false); st.zone = Z.SEARCH; updateFocus();
+    MediaSearch.open(function (p, resume) { st.zone = Z.DETAILS; TitleDetails.open(p, function () { st.zone = Z.SEARCH; resume(); }); }, function () { st.zone = Z.TOP; st.top = TAB_COUNT; updateFocus(); });
+  }
+
   function openTitleDetails(p) {
     st.zone = Z.DETAILS; updateFocus();
     TitleDetails.open(p, function () { st.zone = Z.CARDS; updateFocus(); });
@@ -1144,8 +1181,9 @@
         return;
       case Z.TOP:
         if (st.top < TAB_COUNT) return;
-        if (st.top === TAB_COUNT) { var live = liveTV(); if (live) launcher(live.id, tr('Live TV'))(); }
-        else if (st.top === TAB_COUNT + 1) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
+        if (st.top === TAB_COUNT) { openSearch(); }
+        else if (st.top === TAB_COUNT + 1) { var live = liveTV(); if (live) launcher(live.id, tr('Live TV'))(); }
+        else if (st.top === TAB_COUNT + 2) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
         else openSettings();
         return;
       case Z.CARDS:
@@ -1177,7 +1215,8 @@
   function selectTab(i) {
     if (i === st.tab) return;
     PhotoGallery.hide();
-    st.tab = i;
+    st.tab = i; st.card = 0;
+    $('cards').style.webkitTransform = $('cards').style.transform = 'translateX(0)';
     if (i === 5) { $('cards').innerHTML = ''; cards = []; openPhotos(); }
     else renderCards();
   }
@@ -1201,7 +1240,7 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(0, Math.min(TAB_COUNT + 2, st.top + dx));
+          st.top = Math.max(0, Math.min(TAB_COUNT + 3, st.top + dx));
           if (st.top < TAB_COUNT) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
           if (st.tab === 5) { st.zone = Z.PHOTOS; PhotoGallery.focusFirst(); return; }
@@ -1270,6 +1309,7 @@
   }
 
   function back() {
+    if (st.zone === Z.SETTINGS && settingsPage) { settingsPage = ''; st.row = 0; renderSettings(); return; }
     if (st.zone === Z.WIDGETS) { st.zone = Z.DRAWER; updateFocus(); return; }
     if (st.zone === Z.EDIT) { setClass($('shelfedit'), 'open', false); openSettings(); st.row = rowsNow.length - 2; updateFocus(); return; }
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
@@ -1333,25 +1373,9 @@
 
   function showSaver() {
     hideSaver();
-    saverOn = true;
-    var s = $('saver');
-    s.innerHTML = '';
-    var clock = el('div', 'clock dvd-clock', s);
-    el('div', 'time', clock); el('div', 'date', clock);
-    tickSaverClock(clock);
-    setClass(s, 'on', true);
-    var x = 160, y = 180, dx = 74, dy = 51, last = Date.now(), color = 0;
-    var colors = ['#78e8ff', '#ff81ce', '#a0ff94', '#ffcf70', '#b69cff', '#fff'];
-    function animate() {
-      if (!saverOn || document.hidden) return;
-      var t = Date.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
-      var next = DvdClock.step({x: x, y: y, dx: dx, dy: dy}, dt, 1920 - clock.offsetWidth - 32, 1080 - clock.offsetHeight - 32);
-      x = next.x; y = next.y; dx = next.dx; dy = next.dy;
-      if (next.bounced) clock.style.color = colors[(++color) % colors.length];
-      clock.style.webkitTransform = clock.style.transform = 'translate(' + x + 'px,' + y + 'px)';
-      saverMotion = window.requestAnimationFrame(animate);
-    }
-    saverMotion = window.requestAnimationFrame(animate);
+    saverOn = true; Metrics.setVisible(Metrics.enabled());
+    ScreenRest.start($('saver'), saverPhotos());
+    setClass($('saver'), 'on', true);
   }
 
   function tickSaverClock(clock) {
@@ -1361,7 +1385,7 @@
   }
 
   function hideSaver() {
-    saverOn = false;
+    saverOn = false; ScreenRest.stop(); Metrics.setVisible(false);
     clearTimeout(saverTimer);
     if (saverMotion) window.cancelAnimationFrame(saverMotion); saverMotion = 0;
     setClass($('saver'), 'on', false);
@@ -1377,6 +1401,9 @@
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    if (poke()) { e.preventDefault(); return; }
+    if (st.zone === Z.SEARCH) { MediaSearch.handleKey(e); return; }
+    if (st.zone === Z.TEXT) return;
     if (photoOpen) {
       e.stopPropagation();
       poke();
@@ -1486,7 +1513,7 @@
     checkNight();
     Data.refresh();
     if (!saverOn && !photoOpen && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) showSaver();
-    if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
+
   }, 30000);
 
   // For the browser preview and tests.

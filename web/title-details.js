@@ -33,6 +33,7 @@ var TitleDetails = (function () {
     if (data.genres) meta.push(data.genres.map(function (g) { return g.name; }).join(' · '));
     node('div', meta.filter(function (v) { return !!v; }).join('  ·  '), heading, 'detail-meta');
     var actions = node('div', '', sheet, 'detail-actions'), app = Data.appFor(p.app);
+    if (!app && data.availability) { for (var a = 0; a < data.availability.length && !app; a++) if (data.availability[a].appId) app = {id: data.availability[a].appId, title: data.availability[a].name}; }
     if (app) button(trf('Open {app}', {app: p.service || app.title}), actions, function () {
       TV.launch(app.id, null, function (ok) { if (!ok) status.textContent = tr('Could not open the streaming app.'); });
     });
@@ -42,6 +43,18 @@ var TitleDetails = (function () {
     node('h2', tr('Synopsis'), content);
     node('p', data.overview || (error === 'loading' ? tr('Loading details…') : tr('No synopsis available.')), content);
     var cast = data.credits && data.credits.cast || [];
+    node('h2', tr('Where to watch'), content);
+    var availability = data.availability || [], labels = {flatrate: tr('Subscription'), free: tr('Free'), ads: tr('With ads'), rent: tr('Rent'), buy: tr('Buy')};
+    if (!availability.length) node('p', error === 'loading' ? tr('Loading details…') : tr('No regional availability information found.'), content, 'detail-note');
+    var providers = node('div', '', content, 'detail-providers');
+    for (var v = 0; v < availability.length; v++) {
+      (function (provider) {
+        var text = provider.name + ' · ' + labels[provider.type];
+        if (provider.appId) button(text, providers, function () { TV.launch(provider.appId, null, function (ok) { if (!ok) status.textContent = tr('Could not open the streaming app.'); }); });
+        else node('div', text, providers, 'provider-tag');
+      })(availability[v]);
+    }
+    node('p', 'TMDB / JustWatch' + (data.availabilityRegion ? ' · ' + data.availabilityRegion : ''), content, 'detail-note');
     node('h2', tr('Cast'), content);
     var castRow = node('div', '', content, 'detail-cast');
     for (var i = 0; i < cast.length && i < 18; i++) {

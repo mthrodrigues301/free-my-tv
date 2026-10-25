@@ -1,14 +1,14 @@
 /* Frame cadence is an estimate, not GPU/video FPS. System counters are TV-wide. */
 var Metrics = (function () {
   'use strict';
-  var compact = false, enabled = true, panel, fields = {}, raf = null, timer = null, bridge = null, pending = false;
+  var visible = false, compact = false, enabled = true, panel, fields = {}, raf = null, timer = null, bridge = null, pending = false;
   var previous = null, started = null, frames = 0, stalls = 0, worst = 0, fps = null, frameMs = null;
   var cpuPrevious = null, cpuPercent = null, memory = null, epoch = 0;
   var request = window.requestAnimationFrame || window.webkitRequestAnimationFrame;
   var cancel = window.cancelAnimationFrame || window.webkitCancelAnimationFrame;
   try { enabled = localStorage.getItem('fmtv.metrics') !== 'off'; } catch (e) {}
   function now() { return window.performance && performance.now ? performance.now() : Date.now(); }
-  function active() { return enabled && !document.hidden; }
+  function active() { return enabled && visible && !document.hidden; }
   function unavailable() { return tr('Unavailable'); }
   function mb(n) { return (n / 1048576).toFixed(1) + ' MiB'; }
   function frame(t) {
@@ -111,7 +111,7 @@ var Metrics = (function () {
     document.addEventListener('visibilitychange', resume);
     resume();
   }
-  return {init: init, mount: mount, unmount: function () { panel = null; fields = {}; }, enabled: function () { return enabled; }, toggle: function () {
+  return {setVisible: function (value) { value = !!value; if (visible !== value) { visible = value; resume(); } }, summary: function () { var heap = window.performance && performance.memory; return 'FPS ' + (fps === null ? '—' : fps.toFixed(1)) + ' · ' + tr('Stalls >100 ms') + ' ' + stalls + ' · CPU ' + (cpuPercent === null ? '—' : cpuPercent.toFixed(1) + '%') + ' · RAM ' + (memory ? mb(memory.total - memory.available) : '—') + ' · JS ' + (heap && heap.usedJSHeapSize ? mb(heap.usedJSHeapSize) : '—'); }, init: init, mount: mount, unmount: function () { panel = null; fields = {}; }, enabled: function () { return enabled; }, toggle: function () {
     enabled = !enabled;
     try { localStorage.setItem('fmtv.metrics', enabled ? 'on' : 'off'); } catch (e) {}
     resume(); render();

@@ -11,13 +11,14 @@ var PhotoGallery = (function () {
   function node(tag, text, parent, cls) { var n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; if (parent) parent.appendChild(n); return n; }
   function focus(at) {
     current = Math.max(0, Math.min(controls.length - 1, at));
+    if (!controls.length) return;
     controls[current].focus();
     track.parentNode.scrollTop = 0; track.parentNode.scrollLeft = 0;
-    if (current >= 2 && geometry) {
-      var box = geometry.boxes[current - 2];
+    if (current >= 0 && geometry) {
+      var box = geometry.boxes[current];
       if (box.top < offset) offset = box.top;
-      else if (box.top + box.height > offset + 500) offset = box.top + box.height - 500;
-      offset = Math.max(0, Math.min(Math.max(0, geometry.containerHeight - 500), offset));
+      else if (box.top + box.height > offset + 550) offset = box.top + box.height - 550;
+      offset = Math.max(0, Math.min(Math.max(0, geometry.containerHeight - 550), offset));
       track.style.webkitTransform = track.style.transform = 'translateY(' + (-offset) + 'px)';
     }
   }
@@ -29,9 +30,6 @@ var PhotoGallery = (function () {
   function finish(destination) { if (closed) closed(destination); }
   function paint() {
     sheet.innerHTML = ''; controls = []; offset = 0;
-    var bar = node('div', '', sheet, 'gallery-actions');
-    button(tr('Back'), bar, finish);
-    button(tr('New composition'), bar, function () { photos = shuffle(photos); paint(); });
     var viewport = node('div', '', sheet, 'gallery-viewport');
     track = node('div', '', viewport, 'gallery-track');
     if (!photos.length) node('p', tr('No photos added yet.'), track);
@@ -40,7 +38,7 @@ var PhotoGallery = (function () {
     for (var i = 0; i < photos.length; i++) {
       (function (at) {
         var b = button('', track, function () {
-          openPhoto(at, photos, function (index) { focus(index + 2); });
+          openPhoto(at, photos, function (index) { focus(index); });
         }), rect = geometry.boxes[at];
         b.className = 'gallery-photo'; b.setAttribute('aria-label', trf('Photo {n}', {n: at + 1}));
         b.style.left = rect.left + 'px'; b.style.top = rect.top + 'px'; b.style.width = rect.width + 'px'; b.style.height = rect.height + 'px';
@@ -48,20 +46,20 @@ var PhotoGallery = (function () {
         var img = node('img', '', b); img.src = photos[at].backdrop; img.alt = trf('Photo {n}', {n: at + 1});
       })(i);
     }
-    focus(photos.length ? 2 : 0);
-    setTimeout(function () { if (closed) focus(photos.length ? 2 : 0); }, 0);
+    focus(0);
+    setTimeout(function () { if (closed) focus(0); }, 0);
   }
   function move(dx, dy) {
-    if (current < 2) { if (dy > 0 && photos.length) focus(2); else if (dy < 0) finish(); else if (dx) focus(Math.max(0, Math.min(1, current + dx))); return; }
-    if (dx) { focus(Math.max(2, Math.min(controls.length - 1, current + dx))); return; }
-    var box = geometry.boxes[current - 2], center = box.left + box.width / 2, best = -1, distance = Infinity;
+    if (!controls.length) { finish(dy > 0 ? 'shelf' : 'top'); return; }
+    if (dx) { focus(Math.max(0, Math.min(controls.length - 1, current + dx))); return; }
+    var box = geometry.boxes[current], center = box.left + box.width / 2, best = -1, distance = Infinity;
     for (var i = 0; i < geometry.boxes.length; i++) {
       var b = geometry.boxes[i], delta = b.top + b.height / 2 - box.top - box.height / 2;
       if ((dy < 0 && delta >= -box.height / 2) || (dy > 0 && delta <= box.height / 2)) continue;
       var d = Math.abs(delta) * 3 + Math.abs(b.left + b.width / 2 - center);
       if (d < distance) { distance = d; best = i; }
     }
-    if (best >= 0) focus(best + 2); else finish(dy > 0 ? 'shelf' : 'top');
+    if (best >= 0) focus(best); else finish(dy > 0 ? 'shelf' : 'top');
   }
   function handleKey(e) {
     var k = e.keyCode; e.stopPropagation();
@@ -76,5 +74,5 @@ var PhotoGallery = (function () {
     closed = done; openPhoto = showPhoto; photos = shuffle(source);
     sheet.className = 'photo-gallery inline open'; paint();
   }
-  return {focusFirst: function () { focus(photos.length ? 2 : 0); }, handleKey: handleKey, open: open, hide: hide, shuffle: shuffle};
+  return {reshuffle: function () { if (sheet && sheet.parentNode && photos.length) { photos = shuffle(photos); paint(); } }, focusFirst: function () { focus(0); }, handleKey: handleKey, open: open, hide: hide, shuffle: shuffle};
 }());

@@ -72,6 +72,8 @@ var Prefs = (function () {
     shelf: function () { return pick('shelf', null); },
     recommendations: function () { return RecommendationFilters.normalize(pick('recommendations', null)); },
     transparency: function () { var n = Number(pick('transparency', 90)); return isFinite(n) ? Math.max(0, Math.min(95, n)) : 90; },
+    saverMode: function () { var value = pick('saverMode', 'dvd'); return ['dvd', 'original', 'photos'].indexOf(value) >= 0 ? value : 'dvd'; },
+    saverText: function () { return String(pick('saverText', '')).slice(0, 140); },
     widgetModes: function () { return pick('widgetModes', {}); },
     widgetOrder: function () { return pick('widgetOrder', null); },
     /** The shelf_apps of the build that last set the shelf, so a new one wins once over the TV's choice. */
@@ -643,15 +645,39 @@ var Data = (function () {
     get pricesAt() { return pricesAt; },
     activeCoins: activeCoins,
     hasKey: function () { return !!KEY; },
+    searchTitles: function (query, kind, page, done) {
+      query = String(query || '').replace(/^\s+|\s+$/g, '').slice(0, 150);
+      if (!KEY || !query) { done(new Error('TMDB key or query missing'), [], 0); return; }
+      var type = kind === 'movie' || kind === 'tv' ? kind : 'multi';
+      tmdb('/search/' + type + '?query=' + encodeURIComponent(query) + '&language=' + lang() + '&include_adult=false&page=' + Math.max(1, Math.min(500, page || 1)), function (err, result) {
+        var list = [], rows = !err && result && result.results || [];
+        for (var i = 0; i < rows.length; i++) {
+          var item = rows[i], media = type === 'multi' ? item.media_type : type;
+          if ((media !== 'movie' && media !== 'tv') || item.adult) continue;
+          list.push({id: item.id, kind: media, title: item.title || item.name || '', backdrop: item.backdrop_path, poster: item.poster_path, year: (item.release_date || item.first_air_date || '').slice(0, 4), app: null});
+        }
+        done(err, list, Math.min(500, !err && result && result.total_pages || 0));
+      });
+    },
     titleDetails: function (pick, done) {
       if (!KEY || !pick || (pick.kind !== 'movie' && pick.kind !== 'tv')) { done(new Error('TMDB key required')); return; }
-      tmdb('/' + pick.kind + '/' + pick.id + '?language=' + lang() + '&append_to_response=credits,videos' + (pick.kind === 'tv' ? ',aggregate_credits' : ''), function (err, result) {
+      tmdb('/' + pick.kind + '/' + pick.id + '?language=' + lang() + '&append_to_response=credits,videos,watch/providers' + (pick.kind === 'tv' ? ',aggregate_credits' : ''), function (err, result) {
         if (err) { done(err); return; }
         if (pick.kind === 'tv' && result.aggregate_credits && result.aggregate_credits.cast) {
           result.credits = {cast: result.aggregate_credits.cast.map(function (actor) {
             return {name: actor.name, profile_path: actor.profile_path, character: (actor.roles || []).map(function (role) { return role.character; }).join(' / ')};
           })};
         }
+        var availability = result['watch/providers'], region = availability && availability.results && availability.results[REGION];
+        result.availability = [];
+        ['flatrate', 'free', 'ads', 'rent', 'buy'].forEach(function (type) {
+          var providers = region && region[type] || [];
+          for (var i = 0; i < providers.length; i++) {
+            var provider = providers[i], known = service(provider.provider_name, provider.provider_id), app = known && appFor(known[1]);
+            result.availability.push({id: provider.provider_id, name: provider.provider_name, type: type, appId: app ? app.id : null, service: known ? known[1] : null});
+          }
+        });
+        result.availabilityRegion = REGION;
         var trailers = result.videos && result.videos.results || [];
         if (trailers.some(function (v) { return v.type === 'Trailer' && v.site === 'YouTube'; })) { done(null, result); return; }
         tmdb('/' + pick.kind + '/' + pick.id + '/videos?language=en-US', function (videoError, videos) {
