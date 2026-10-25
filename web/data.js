@@ -70,6 +70,10 @@ var Prefs = (function () {
     quotes: function () { return pick('quotes', CONFIG.showCrypto !== false); },
     coin: function (i) { var c = pick('coins', null); return c ? c[i] !== false : true; },
     shelf: function () { return pick('shelf', null); },
+    recommendations: function () { return RecommendationFilters.normalize(pick('recommendations', null)); },
+    transparency: function () { var n = Number(pick('transparency', 90)); return isFinite(n) ? Math.max(0, Math.min(95, n)) : 90; },
+    widgetModes: function () { return pick('widgetModes', {}); },
+    widgetOrder: function () { return pick('widgetOrder', null); },
     /** The shelf_apps of the build that last set the shelf, so a new one wins once over the TV's choice. */
     shelfConfig: function () { return pick('shelfConfig', ''); },
     set: function (name, value) { v[name] = value; save(); this.version++; },
@@ -307,7 +311,7 @@ var Data = (function () {
   }
 
   function sourceStamp() {
-    var s = KEY.length + ':' + KEY.slice(-6) + ':' + REGION + (CONFIG.hideAnimation ? ':no-animation' : '');
+    var s = 'filters-v2:' + JSON.stringify(Prefs.recommendations()) + ':' + KEY.length + ':' + KEY.slice(-6) + ':' + REGION + (CONFIG.hideAnimation ? ':no-animation' : '');
     for (var i = 0; i < SERVICES.length; i++) s += appFor(SERVICES[i][1]) ? '1' : '0';
     return s;
   }
@@ -319,13 +323,25 @@ var Data = (function () {
   }
 
   /** This hour's 3 picks: movies ("movie"), shows ("tv") or both (null). */
-  function now(kind) {
+  function eligible(kind) {
     var list = [];
-    if (!KEY) return list;
+    if (!KEY || stamp !== sourceStamp()) return list;
     for (var i = 0; i < picks.length; i++) {
       var p = picks[i];
-      if ((kind === null || kind === p.kind) && (!p.detailed || (p.app && appFor(p.app)))) list.push(p);
+      if ((kind === null || kind === p.kind) && p.detailed && p.filterVersion === 1 && p.app && appFor(p.app)
+          && RecommendationFilters.matches(p, Prefs.recommendations())) list.push(p);
     }
+    return list;
+  }
+
+  function collection(section) {
+    var list = eligible(null).filter(function (p) { return p[section] === true; });
+    if (section === 'releases') list.sort(function (a, b) { return (b.releaseDate || '').localeCompare(a.releaseDate || ''); });
+    return list;
+  }
+
+  function now(kind) {
+    var list = eligible(kind);
     if (!list.length) return list;
     var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};
     for (var j = 0; j < list.length && out.length < 3; j++) {
@@ -376,9 +392,12 @@ var Data = (function () {
 
   /** Genre, runtime or seasons, and the service it's on among the TV's apps. */
   function details(p, done) {
-    tmdb('/' + p.kind + '/' + p.id + '?language=' + lang() + '&append_to_response=watch/providers,images&include_image_language=null,'
+    tmdb('/' + p.kind + '/' + p.id + '?language=' + lang() + '&append_to_response=watch/providers,images,keywords&include_image_language=null,'
         + I18N.base + ',en', function (err, o) {
       if (err) { done(err); return; }
+      p.genreIds = (o.genres || []).map(function (g) { return g.id; });
+      p.anime = RecommendationFilters.anime(o);
+      p.filterVersion = 1;
       var best = bestBackdrop(o.images);
       if (best) p.backdrop = best;
       var parts = [];
@@ -396,7 +415,7 @@ var Data = (function () {
       p.app = null;
       for (var i = 0; flat && i < flat.length && !p.app; i++) {
         var s = service(flat[i].provider_name, flat[i].provider_id);
-        if (s && appFor(s[1])) { p.app = s[1]; p.service = s[4]; }
+        if (s && appFor(s[1]) && RecommendationFilters.provider(s[1], Prefs.recommendations())) { p.app = s[1]; p.service = s[4]; }
       }
       if (p.service && p.app) parts.push(p.service);
       p.meta = parts.join(' · ');
@@ -430,10 +449,16 @@ var Data = (function () {
     return false;
   }
 
-  function addPick(list, o, kind) {
+  function addPick(list, o, kind, section) {
     if (!o.backdrop_path) return;
+    if (section === 'trending' && (!(o.vote_average >= 7) || !(o.vote_count >= (kind === 'movie' ? 50 : 20)))) return;
     if (CONFIG.hideAnimation && animated(o)) return;
-    list.push({id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, meta: '', app: null, detailed: false});
+    var wantedGenres = Prefs.recommendations()[kind];
+    if (wantedGenres.length && !wantedGenres.some(function (id) { return (o.genre_ids || []).indexOf(id) >= 0; })) return;
+    var p = {id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, meta: '', app: null, detailed: false};
+    p[section] = true;
+    p.releaseDate = o.release_date || o.first_air_date || '';
+    list.push(p);
   }
 
   function keyOf(p) { return p.kind + ':' + p.id; }
@@ -454,39 +479,72 @@ var Data = (function () {
     })();
   }
 
+  function genreQuery(kind) {
+    var ids = Prefs.recommendations()[kind];
+    return ids.length ? '&with_genres=' + encodeURIComponent(ids.join('|')) : '';
+  }
+
+  function recommendationProviders(done) {
+    var rows = [], error = null;
+    each(['movie', 'tv'], function (kind, next) {
+      tmdb('/watch/providers/' + kind + '?language=' + lang() + '&watch_region=' + REGION, function (err, res) {
+        if (err) error = err;
+        else rows = rows.concat(res.results || []);
+        next();
+      });
+    }, function () { done(error, {results: rows}); });
+  }
+
   function fetchList(done) {
-    tmdb('/watch/providers/movie?language=' + lang() + '&watch_region=' + REGION, function (err, res) {
+    var requestStamp = sourceStamp();
+    recommendationProviders(function (err, res) {
       if (err) { done(err); return; }
       var ids = [];
       for (var i = 0; res.results && i < res.results.length; i++) {
         var s = service(res.results[i].provider_name, res.results[i].provider_id);
-        if (s && appFor(s[1])) ids.push(res.results[i].provider_id);
+        if (s && appFor(s[1]) && RecommendationFilters.provider(s[1], Prefs.recommendations())) { if (ids.indexOf(res.results[i].provider_id) < 0) ids.push(res.results[i].provider_id); }
       }
-      if (!ids.length) { done(new Error("none of the TV's streaming apps are on TMDB")); return; }
+      if (!ids.length) { if (requestStamp === sourceStamp()) picks = []; done(null); return; }
       var common = '&language=' + lang() + '&watch_region=' + REGION + '&with_watch_monetization_types=flatrate&include_adult=false'
-          + '&sort_by=popularity.desc&with_watch_providers=' + encodeURIComponent(ids.join('|'))
+          + '&with_watch_providers=' + encodeURIComponent(ids.join('|'))
           + (CONFIG.hideAnimation ? '&without_genres=' + ANIMATION : '');
       var hot = {movie: [], tv: []}, fresh = {movie: [], tv: []};
       each(['movie', 'tv'], function (kind, next) {
         tmdb('/trending/' + kind + '/week?language=' + lang(), function (e, r) {
           var candidates = [];
-          for (var j = 0; !e && j < r.results.length && j < 16; j++) addPick(candidates, r.results[j], kind);
+          for (var j = 0; !e && j < r.results.length && j < 16; j++) addPick(candidates, r.results[j], kind, 'trending');
           // Trending is only kept when it's on one of the TV's apps: the details say where.
           each(candidates, function (p, n) {
-            details(p, function (de) { if (!de && p.app) hot[kind].push(p); n(); });
+            details(p, function (de) { if (!de && p.app && RecommendationFilters.matches(p, Prefs.recommendations())) hot[kind].push(p); n(); });
           }, next);
         });
       }, function () {
-        tmdb('/discover/movie?vote_count.gte=30&primary_release_date.gte=' + day(-365) + '&primary_release_date.lte=' + day(0) + common, function (e1, r1) {
-          for (var j = 0; !e1 && j < r1.results.length; j++) addPick(fresh.movie, r1.results[j], 'movie');
-          tmdb('/discover/tv?vote_count.gte=20&air_date.gte=' + day(-90) + '&air_date.lte=' + day(0) + common, function (e2, r2) {
-            for (var k = 0; !e2 && k < r2.results.length; k++) addPick(fresh.tv, r2.results[k], 'tv');
+        tmdb('/discover/movie?vote_count.gte=30&primary_release_date.gte=' + day(-90) + '&primary_release_date.lte=' + day(0) + common + '&sort_by=primary_release_date.desc' + genreQuery('movie'), function (e1, r1) {
+          for (var j = 0; !e1 && j < r1.results.length; j++) addPick(fresh.movie, r1.results[j], 'movie', 'releases');
+          tmdb('/discover/tv?vote_count.gte=20&first_air_date.gte=' + day(-90) + '&first_air_date.lte=' + day(0) + common + '&sort_by=first_air_date.desc' + genreQuery('tv'), function (e2, r2) {
+            for (var k = 0; !e2 && k < r2.results.length; k++) addPick(fresh.tv, r2.results[k], 'tv', 'releases');
             var list = [], seen = {};
             alternate(list, seen, hot.movie, hot.tv, 24);
-            alternate(list, seen, fresh.movie, fresh.tv, 24);
-            if (!list.length) { done(new Error('TMDB returned no recommendations')); return; }
-            picks = list;
-            done(null);
+            var candidates = [];
+            var freshList = [];
+            alternate(freshList, {}, fresh.movie, fresh.tv, 24);
+            for (var f = 0; f < freshList.length; f++) {
+              var existing = null;
+              for (var h = 0; h < list.length; h++) if (keyOf(list[h]) === keyOf(freshList[f])) existing = list[h];
+              if (existing) { existing.releases = true; existing.releaseDate = freshList[f].releaseDate; }
+              else candidates.push(freshList[f]);
+            }
+            each(candidates, function (p, next) {
+              details(p, function (err) {
+                if (!err && p.app && RecommendationFilters.matches(p, Prefs.recommendations())) list.push(p);
+                next();
+              });
+            }, function () {
+              if (requestStamp !== sourceStamp()) { done(new Error('filters changed')); return; }
+              if (e1 || e2) { done(e1 || e2); return; }
+              picks = list;
+              done(null);
+            });
           });
         });
       });
@@ -498,7 +556,7 @@ var Data = (function () {
     if (!KEY || fetchingRecs || !installed.length) return;
     var t = Date.now(), p = hourPeriod(new Date()), st = sourceStamp();
     if (st === stamp && failedAt && t - failedAt < 10 * 60000 && t >= failedAt) return;
-    var stale = st !== stamp || p !== period || t - listAt > 6 * 3600000 || t < listAt || !picks.length || listLang !== I18N.lang;
+    var stale = st !== stamp || p !== period || t - listAt > 6 * 3600000 || t < listAt || !listAt || listLang !== I18N.lang;
     var wanted = all(), missing = false;
     for (var i = 0; i < wanted.length; i++) missing = missing || !wanted[i].detailed;
     if (!stale && !missing) return;
@@ -506,6 +564,7 @@ var Data = (function () {
     stamp = st;
     function finish(err) {
       fetchingRecs = false;
+      if (st !== sourceStamp()) { picks = []; stamp = ''; refreshRecs(); return; }
       if (err) { recsError = err.message; failedAt = Date.now(); } else { recsError = ''; failedAt = 0; }
       saveRecs();
       changed();
@@ -584,8 +643,44 @@ var Data = (function () {
     get pricesAt() { return pricesAt; },
     activeCoins: activeCoins,
     hasKey: function () { return !!KEY; },
+    titleDetails: function (pick, done) {
+      if (!KEY || !pick || (pick.kind !== 'movie' && pick.kind !== 'tv')) { done(new Error('TMDB key required')); return; }
+      tmdb('/' + pick.kind + '/' + pick.id + '?language=' + lang() + '&append_to_response=credits,videos' + (pick.kind === 'tv' ? ',aggregate_credits' : ''), function (err, result) {
+        if (err) { done(err); return; }
+        if (pick.kind === 'tv' && result.aggregate_credits && result.aggregate_credits.cast) {
+          result.credits = {cast: result.aggregate_credits.cast.map(function (actor) {
+            return {name: actor.name, profile_path: actor.profile_path, character: (actor.roles || []).map(function (role) { return role.character; }).join(' / ')};
+          })};
+        }
+        var trailers = result.videos && result.videos.results || [];
+        if (trailers.some(function (v) { return v.type === 'Trailer' && v.site === 'YouTube'; })) { done(null, result); return; }
+        tmdb('/' + pick.kind + '/' + pick.id + '/videos?language=en-US', function (videoError, videos) {
+          if (!videoError && videos) result.videos = {results: trailers.concat(videos.results || [])};
+          done(null, result);
+        });
+      });
+    },
+    recommendationServices: function () {
+      return SERVICES.filter(function (s) { return !!appFor(s[1]); }).map(function (s) { return {id: s[1], name: s[4]}; });
+    },
+    recommendationGenres: function (kind, done) {
+      var key = 'genres-' + kind + '-' + lang(), cached = stored(key);
+      if (cached && cached.length) { done(null, cached); return; }
+      if (!KEY) { done(new Error('TMDB key required'), []); return; }
+      tmdb('/genre/' + kind + '/list?language=' + lang(), function (err, result) {
+        var list = !err && result && result.genres || [];
+        if (list.length) store(key, list);
+        done(err, list);
+      });
+    },
+    applyRecommendationFilters: function (value) {
+      Prefs.set('recommendations', RecommendationFilters.normalize(value));
+      picks = []; stamp = ''; listAt = 0; failedAt = 0; recsError = '';
+      saveRecs(); changed(); refreshRecs();
+    },
     recsError: function () { return recsError; },
     picks: now,
+    collection: collection,
     showcase: all,
     image: function (path, size) { return path ? 'https://image.tmdb.org/t/p/' + (size || 'w1280') + path : ''; },
 

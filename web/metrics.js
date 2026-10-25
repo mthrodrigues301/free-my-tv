@@ -1,7 +1,7 @@
 /* Frame cadence is an estimate, not GPU/video FPS. System counters are TV-wide. */
 var Metrics = (function () {
   'use strict';
-  var enabled = true, panel, raf = null, timer = null, bridge = null, pending = false;
+  var compact = false, enabled = true, panel, fields = {}, raf = null, timer = null, bridge = null, pending = false;
   var previous = null, started = null, frames = 0, stalls = 0, worst = 0, fps = null, frameMs = null;
   var cpuPrevious = null, cpuPercent = null, memory = null, epoch = 0;
   var request = window.requestAnimationFrame || window.webkitRequestAnimationFrame;
@@ -59,16 +59,35 @@ var Metrics = (function () {
     };
     try { current.call('luna://io.freemytv.metrics/sample', '{}'); } catch (e) { finish(null); }
   }
+  function mount(card, summary) {
+    compact = summary === true;
+    panel = card; fields = {};
+    function node(cls, text, parent) {
+      var n = document.createElement('div'); n.className = cls; n.textContent = text || '';
+      parent.appendChild(n); return n;
+    }
+    node('head', tr('Performance'), card);
+    var grid = node('metric-grid', '', card);
+    var defs = [['fps', 'FPS (UI)'], ['stalls', tr('Stalls >100 ms')], ['worst', tr('Worst frame')],
+      ['heap', tr('JavaScript memory')], ['cpu', tr('CPU (TV total)')], ['ram', tr('RAM (TV total)')]];
+    for (var i = 0; i < defs.length; i++) {
+      if (compact && (defs[i][0] === 'worst' || defs[i][0] === 'heap')) continue;
+      var cell = node('metric-cell', '', grid);
+      node('metric-label', defs[i][1], cell);
+      fields[defs[i][0]] = node('metric-value', '', cell);
+    }
+    render();
+  }
   function render() {
     if (!panel) return;
     var heap = window.performance && performance.memory;
-    var js = heap && heap.usedJSHeapSize > 0 ? mb(heap.usedJSHeapSize) : unavailable();
-    panel.textContent = tr('Performance') + ' | ' +
-      'FPS (UI): ' + (fps === null ? unavailable() : fps.toFixed(1) + ' | ' + frameMs.toFixed(1) + ' ms') + ' | ' +
-      tr('Stalls >100 ms') + ': ' + stalls + ' | ' + tr('Worst frame') + ': ' + worst.toFixed(0) + ' ms\n' +
-      tr('JavaScript memory') + ': ' + js + ' | ' +
-      tr('CPU (TV total)') + ': ' + (cpuPercent === null ? unavailable() : cpuPercent.toFixed(1) + '%') + ' | ' +
-      tr('RAM (TV total)') + ': ' + (memory ? mb(memory.total - memory.available) + ' / ' + mb(memory.total) : unavailable());
+    fields.fps.textContent = fps === null ? unavailable() : fps.toFixed(1) + (compact ? '' : ' | ' + frameMs.toFixed(1) + ' ms');
+    fields.stalls.textContent = String(stalls);
+    if (fields.worst) fields.worst.textContent = worst.toFixed(0) + ' ms';
+    if (fields.heap) fields.heap.textContent = heap && heap.usedJSHeapSize > 0 ? mb(heap.usedJSHeapSize) : unavailable();
+    fields.cpu.textContent = cpuPercent === null ? unavailable() : cpuPercent.toFixed(1) + '%';
+    fields.ram.textContent = memory ? (compact ? ((memory.total - memory.available) * 100 / memory.total).toFixed(1) + '%' : mb(memory.total - memory.available) + ' / ' + mb(memory.total)) : unavailable();
+    panel.style.display = enabled ? '' : 'none';
   }
   function stop() {
     epoch++;
@@ -81,25 +100,21 @@ var Metrics = (function () {
   }
   function resume() {
     stop();
-    panel.style.display = active() && !document.querySelector('#saver.on') ? 'block' : 'none';
     if (!active()) return;
     if (request) raf = request.call(window, frame);
     render(); sampleSystem();
     timer = setInterval(function () {
-      panel.style.display = document.querySelector('#saver.on') ? 'none' : 'block';
       render(); sampleSystem();
     }, 3000);
   }
   function init() {
-    panel = document.createElement('div'); panel.id = 'metrics';
-    document.getElementById('stage').appendChild(panel);
     document.addEventListener('visibilitychange', resume);
     resume();
   }
-  return {init: init, enabled: function () { return enabled; }, toggle: function () {
+  return {init: init, mount: mount, unmount: function () { panel = null; fields = {}; }, enabled: function () { return enabled; }, toggle: function () {
     enabled = !enabled;
     try { localStorage.setItem('fmtv.metrics', enabled ? 'on' : 'off'); } catch (e) {}
-    resume();
+    resume(); render();
   }};
 }());
 Metrics.init();

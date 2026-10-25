@@ -580,13 +580,20 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* The Magic Remote's pointer: no text selection, no outlines. */
 * { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 
-/* A compact read-only overlay, clear of the shelf and remote targets. */
-#metrics {
-  position: absolute; left: 64px; top: 6px; z-index: 90;
-  padding: 4px 12px; border-radius: 6px; background: rgba(0,0,0,.8);
-  color: #fff; font: 16px/1.3 monospace; white-space: pre;
-  pointer-events: none;
-}
+/* Widgets share the drawer's glass cards; overflow is reachable with the remote. */
+#widgets { position: absolute; left: 80px; top: 708px; width: 1760px; height: 304px; overflow: hidden; }
+#widget-track { position: relative; height: 300px; -webkit-transition: -webkit-transform .25s; transition: transform .25s; }
+#widgets .panel { top: 0; }
+.drawer-open #widgets .widget { pointer-events: auto; }
+#widgets .widget.focus { box-shadow: inset 0 0 0 3px rgba(100,100,110,.8); }
+.night #widgets .widget.focus { box-shadow: inset 0 0 0 3px rgba(255,255,255,.7); }
+#widget-hint { position: absolute; left: 86px; top: 1022px; font-size: 20px; color: #6E6E73; }
+.night #widget-hint { color: rgba(255,255,255,.65); }
+.metric-grid { position: absolute; top: 82px; left: 34px; right: 26px; }
+.metric-cell { float: left; width: 50%; height: 66px; box-sizing: border-box; padding-right: 16px; }
+.metric-label { font-size: 18px; color: #6E6E73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.night .metric-label { color: rgba(255,255,255,.65); }
+.metric-value { font-size: 25px; line-height: 36px; font-weight: 600; white-space: nowrap; font-feature-settings: 'tnum'; }
 
 #citypick .box {
   position: absolute; left: 380px; top: 92px; width: 1160px; padding: 28px;
@@ -607,3 +614,160 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #citypick .city-results button { display: block; width: 100%; margin-bottom: 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #settings .row .value { max-width: 62%; overflow: hidden; text-overflow: ellipsis; }
 #weather .head { max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
+
+#widgets { touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+#add-widget { cursor: pointer; text-align: center; }
+.widget-plus { font-size: 104px; font-weight: 300; line-height: 130px; padding-top: 40px; }
+.widget-add-label { font-size: 25px; font-weight: 600; }
+.widget-clock-time { position: absolute; top: 94px; left: 34px; font-size: 72px; line-height: 90px; font-weight: 300; }
+.widget-clock-date { position: absolute; top: 209px; left: 34px; right: 28px; font-size: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.widget-sun { position: absolute; top: 96px; left: 34px; right: 28px; font-size: 30px; line-height: 56px; }
+.widget-sun-city { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#widgetpick .box { position: absolute; left: 460px; top: 100px; width: 1000px; padding: 32px; box-sizing: border-box; border-radius: 28px; background: #202024; color: white; }
+.widget-picker-hint, .widget-picker-empty { font-size: 25px; margin: 8px 18px 24px; }
+.widget-options { max-height: 470px; overflow-y: auto; }
+#widgetpick button { display: block; width: 100%; border: 2px solid transparent; border-radius: 14px; background: #38383d; color: white; padding: 18px 24px; margin-bottom: 10px; text-align: left; font: inherit; font-size: 28px; cursor: pointer; }
+#widgetpick button:focus { outline: none; border-color: white; background: #4b4b53; }
+#widgetpick .widget-picker-cancel { width: auto; margin-top: 20px; }
+
+/* Private photo carousel and full-screen viewer. */
+.photos-tab #cards .card .img { background-size: contain; background-color: #151518; }
+#photo-viewer { display: none; position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; z-index: 100; }
+#photo-viewer.open { display: block; }
+#photo-viewer img { width: 100%; height: 100%; object-fit: contain; }
+#photo-viewer button { position: absolute; background: rgba(30,30,30,0.8); color: white; border: 2px solid white; border-radius: 14px; padding: 12px 24px; font: inherit; font-size: 30px; cursor: pointer; }
+#photo-close { right: 40px; top: 30px; }
+#photo-prev { left: 35px; top: 500px; }
+#photo-next { right: 35px; top: 500px; }
+#photo-viewer button:disabled { opacity: 0.3; }
+#photo-count { position: absolute; bottom: 28px; left: 860px; width: 200px; text-align: center; color: white; font-size: 26px; }
+
+/* Persistent recommendation filters. */
+#recommendations .box { position: absolute; left: 410px; top: 90px; width: 1100px; padding: 32px; box-sizing: border-box; border-radius: 28px; background: #202024; color: white; }
+#recommendations .title { font-size: 38px; font-weight: 600; margin-bottom: 16px; }
+#recommendations .rec-status { font-size: 24px; line-height: 1.35; min-height: 66px; color: #ddd; margin-bottom: 12px; }
+#recommendations .rec-options { position: relative; max-height: 600px; overflow-y: auto; padding: 4px; }
+#recommendations button { display: block; box-sizing: border-box; width: 100%; border: 2px solid transparent; border-radius: 14px; background: #38383d; color: white; padding: 15px 22px; margin-bottom: 8px; text-align: left; font: inherit; font-size: 27px; cursor: pointer; }
+#recommendations button:focus { outline: none; border-color: white; background: #4b4b53; }
+#recommendations button[aria-checked]::before { content: '○'; display: inline-block; width: 40px; }
+#recommendations button[aria-checked="true"]::before { content: '✓'; }
+#recommendations .hint { position: static; margin-top: 20px; font-size: 22px; color: #ccc; }
+
+.recommendations-empty { position: absolute; top: 330px; left: 100px; width: 1720px; text-align: center; font-size: 32px; }
+
+#widgetorder .box { position: absolute; left: 460px; top: 80px; width: 1000px; padding: 32px; box-sizing: border-box; border-radius: 28px; background: #202024; color: white; }
+#widgetorder .title { font-size: 38px; font-weight: 600; margin-bottom: 16px; }
+#widgetorder .widget-picker-hint { font-size: 25px; margin-bottom: 20px; }
+#widgetorder button { box-sizing: border-box; border: 2px solid transparent; border-radius: 14px; background: #38383d; color: white; padding: 14px 20px; margin-bottom: 10px; text-align: left; font: inherit; font-size: 28px; cursor: pointer; }
+#widgetorder .box > button { display: block; width: 100%; }
+#widgetorder .widget-order-row > button { width: 76%; }
+#widgetorder .widget-order-row > button + button { width: 10%; margin-left: 2%; text-align: center; }
+#widgetorder button:focus { outline: none; border-color: white; background: #4b4b53; }
+#widgetorder button:disabled { opacity: 0.3; }
+
+/* Full widgets fit their available data; compact widgets retain the essentials. */
+#widgets .widget .head { max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
+#weather.weather-simple .hours { display: none; }
+#weather.weather-simple .split { left: 320px; }
+#weather.weather-simple .sun { left: 350px; top: 92px; }
+#weather.weather-simple .sun span { display: block; margin: 0 0 26px; }
+#weather.weather-empty .cond { right: 28px; font-size: 23px; white-space: normal; }
+#widgets .compact .head { left: 24px; right: 24px; top: 20px; max-width: none; font-size: 23px; }
+#weather.compact .now { left: 24px; top: 62px; height: 68px; }
+#weather.compact .now .sym { width: 40px; height: 40px; vertical-align: 6px; margin-right: 12px; }
+#weather.compact .now .temp { font-size: 68px; line-height: 72px; }
+#weather.compact .cond { left: 24px; right: 24px; top: 142px; font-size: 24px; overflow: hidden; text-overflow: ellipsis; }
+#weather.compact .range { left: 24px; top: 181px; font-size: 20px; }
+#weather.compact.weather-empty .cond { top: 78px !important; font-size: 22px; white-space: normal; }
+#prices.compact .side, #prices.compact .coin .c { display: none; }
+#prices.compact .coin { left: 24px; right: 24px; font-size: 23px; }
+#prices.compact .coin .n { left: 40px; max-width: 105px; overflow: hidden; text-overflow: ellipsis; }
+#prices.compact .coin .p { right: 0; font-size: 23px; }
+#prices.compact .coin svg { width: 24px; height: 24px; top: 3px; }
+#widgets .compact .metric-grid { left: 24px; right: 20px; top: 66px; }
+#widgets .compact .metric-cell { height: 68px; padding-right: 8px; }
+#widgets .compact .metric-label { font-size: 16px; }
+#widgets .compact .metric-value { font-size: 24px; }
+#clock-widget .widget-clock-time { top: 72px; }
+#clock-widget .widget-clock-date { top: 180px; font-size: 23px; }
+#clock-widget.compact .widget-clock-time { left: 24px; top: 60px; font-size: 58px; line-height: 66px; }
+#clock-widget.compact .widget-clock-date { left: 24px; right: 20px; top: 137px; font-size: 19px; }
+#sun .widget-sun { top: 80px; font-size: 28px; line-height: 48px; }
+#sun.compact .widget-sun { left: 24px; right: 20px; top: 70px; font-size: 23px; line-height: 48px; }
+#sun.compact .widget-sun-city { display: none; }
+#add-widget .widget-plus { font-size: 72px; line-height: 82px; padding-top: 18px; }
+#add-widget .widget-add-label { font-size: 23px; padding: 0 16px; }
+
+#widgets #weather .head { max-width: 330px; }
+#widgets #weather.weather-simple .head { max-width: 270px; }
+#widgetorder .widget-order-row > button { width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#widgetorder .widget-order-row > button + button { width: 8%; padding-left: 8px; padding-right: 8px; }
+#widgetorder .widget-order-row > button.widget-remove { width: 16%; }
+.widget-edge { position: absolute; top: 818px; width: 60px; height: 70px; padding: 0; border: 0; border-radius: 22px; background: rgba(255,255,255,.55); color: #6E6E73; cursor: pointer; }
+#widget-prev { left: 10px; }
+#widget-next { right: 10px; }
+.widget-edge .sym { width: 24px; height: 24px; }
+.widget-edge .back { -webkit-transform: rotate(180deg); transform: rotate(180deg); }
+.night .widget-edge { background: rgba(50,50,55,.8); color: #ddd; }
+.widget-edge:focus { outline: 2px solid #8E8E93; }
+/* Immersive media details and private gallery. */
+.title-details, .photo-gallery { display: none; z-index: 5; background: #0b1020; color: #f7f7fa; }
+.title-details.open, .photo-gallery.open { display: block; }
+.detail-backdrop { position: absolute; right: 0; top: 0; width: 1250px; height: 780px; background-size: cover; background-position: center; opacity: .2; }
+.detail-heading { position: absolute; top: 60px; left: 80px; width: 1720px; }
+.detail-heading h1 { margin: 0 0 16px; font-size: 50px; max-width: 1660px; }
+.detail-meta, .detail-status { font-size: 25px; color: #ccd0db; }
+.detail-status { margin-top: 8px; }
+.detail-actions { position: absolute; left: 80px; top: 230px; }
+.title-details button, .photo-gallery .gallery-actions button { border: 2px solid rgba(255,255,255,.4); background: rgba(255,255,255,.12); border-radius: 18px; padding: 16px 24px; margin-right: 16px; font-size: 27px; color: white; cursor: pointer; }
+.title-details button:focus, .photo-gallery button:focus { outline: 3px solid #a9dfff; outline-offset: 3px; background-color: rgba(170,215,255,.18); }
+.detail-content { position: absolute; left: 80px; top: 330px; width: 870px; height: 640px; overflow-y: auto; padding-right: 28px; box-sizing: border-box; }
+.title-details h2 { font-size: 31px; margin: 0 0 18px; }
+.title-details p { font-size: 26px; line-height: 1.5; margin: 0 0 30px; }
+.detail-note { color: #b4bdce; font-size: 22px !important; }
+.detail-cast { overflow: hidden; margin-bottom: 25px; }
+.detail-actor { display: inline-block; vertical-align: top; width: 180px; margin: 0 18px 24px 0; font-size: 22px; line-height: 1.35; }
+.detail-actor img { display: block; width: 150px; height: 200px; object-fit: cover; border-radius: 14px; margin-bottom: 12px; }
+.detail-actor small { display: block; color: #adb9cd; font-size: 19px; margin-top: 6px; }
+.detail-trailer { position: absolute; left: 1020px; top: 330px; width: 800px; }
+.trailer-screen { width: 800px; height: 450px; background: #151c2b center / cover no-repeat; border-radius: 22px; overflow: hidden; margin-bottom: 20px; }
+.trailer-screen iframe { width: 100%; height: 100%; border: 0; }
+.detail-hint { position: absolute; left: 80px; bottom: 35px; font-size: 23px; color: #aeb7c8; }
+.photo-gallery { background: linear-gradient(145deg,#10131d,#21202b 65%,#12222c); }
+.gallery-heading { position: absolute; left: 80px; top: 46px; }
+.gallery-heading h1 { font-size: 52px; margin: 0 0 8px; font-weight: 500; }
+.gallery-heading p { font-size: 24px; color: #b9c2d0; margin: 0; }
+.gallery-actions { position: absolute; right: 80px; top: 60px; }
+.gallery-viewport { position: absolute; left: 80px; top: 200px; width: 1760px; height: 820px; overflow: hidden; }
+.gallery-track { position: relative; width: 1760px; transition: transform .3s; -webkit-transition: -webkit-transform .3s; }
+.gallery-photo { position: absolute; overflow: hidden; border-radius: 18px; cursor: pointer; box-shadow: 0 12px 24px rgba(0,0,0,.3); }
+.gallery-photo img { width: 100%; height: 100%; object-fit: cover; }
+#saver .dvd-clock { left: 0; top: 0; bottom: auto; background: none; box-shadow: none; padding: 12px 20px; border-radius: 0; color: #78e8ff; }
+#saver .dvd-clock .time { font-size: 130px; }
+#saver .dvd-clock .date { font-size: 28px; color: inherit; }
+#widgetorder .box { top: 35px; }
+#widgetorder .box > button { padding-top: 10px; padding-bottom: 10px; }
+#widgetorder .widget-order-row > button { font-size: 25px; }
+#widgetorder .widget-picker-hint { margin-bottom: 14px; font-size: 23px; }
+
+.drawer-open .widget-edge { pointer-events: auto; }
+
+/* Separate the sharp photo from softly blurred letterbox filling. */
+.photos-tab #cards .card .img { background-repeat: no-repeat; }
+#photo-soft-background { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: center / cover no-repeat; opacity: .6; }
+#photo-viewer img { position: relative; z-index: 1; }
+#photo-viewer button, #photo-count { z-index: 2; }
+.gallery-photo-soft { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: center / cover no-repeat; opacity: .55; }
+.gallery-photo img { position: relative; display: block; object-fit: contain; }
+
+/* Photos remain in the home tab; only an individual photo opens fullscreen. */
+#photo-gallery.inline { position: absolute; left: 80px; top: 246px; width: 1760px; height: 478px; background: transparent; z-index: 2; }
+#photo-gallery.inline .gallery-actions { right: 0; top: 0; }
+#photo-gallery.inline .gallery-actions button { color: inherit; font-size: 21px; padding: 8px 18px; background: rgba(120,125,140,.18); margin-right: 0; margin-left: 10px; }
+#photo-gallery.inline .gallery-viewport { left: 0; top: 58px; width: 1760px; height: 380px; }
+#photo-gallery.inline .gallery-photo { border-radius: 14px; }
+#photo-gallery.inline { color: #1D1D1F; }
+.night #photo-gallery.inline { color: #F5F5F7; }
+
+#photo-gallery.inline { top: 230px; height: 570px; }
+#photo-gallery.inline .gallery-viewport { top: 50px; height: 500px; }

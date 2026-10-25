@@ -255,7 +255,7 @@
     }
   }
 
-  var apps = [], shelf = [], others = [], inputs = [];
+  var apps = [], shelf = [], pinned = [], others = [], inputs = [];
 
   /** shelf_apps in config.properties: the shelf in that order, by id or name (part of it). */
   var WANTED = (CONFIG.shelfApps || []).map(function (s) { return s.toLowerCase(); });
@@ -266,7 +266,7 @@
       Prefs.set('shelfConfig', WANTED.join(','));
     }
     var chosen = Prefs.shelf(), out = [];
-    if (chosen) {
+    if (Array.isArray(chosen)) {
       for (var i = 0; i < chosen.length; i++) {
         for (var j = 0; j < apps.length; j++) if (apps[j].id === chosen[i]) out.push(apps[j]);
       }
@@ -286,17 +286,19 @@
       }
       if (!out.length) out = apps.slice(0, FEW_APPS);
     }
-    shelf = out;
-    others = apps.filter(function (x) { return shelf.indexOf(x) < 0; });
+    var ordered = ShelfOrder.arrange(apps, out.map(function (app) { return app.id; }));
+    pinned = ordered.pinned;
+    shelf = ordered.all;
+    others = ShelfOrder.arrange(apps, []).all;
   }
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', RECS: 'recs', DETAILS: 'details', PHOTOS: 'photos', WIDGETS: 'widgets', WIDGETPICK: 'widgetpick', WIDGETORDER: 'widgetorder'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, widget: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.DETAILS || st.zone === Z.RECS || st.zone === Z.CITY || (st.zone === Z.WIDGETPICK || st.zone === Z.WIDGETORDER); }
 
   function updateFocus() {
     var i, list;
@@ -306,15 +308,18 @@
       setClass(list[i], 'focus', st.zone === Z.TOP && st.top === i);
     }
     list = $('buttons').children;
-    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === 3 + i);
-    setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= 3);
+    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === TAB_COUNT + i);
+    setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= TAB_COUNT);
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
+    var photoOffset = st.tab >= 3 ? Math.max(0, Math.min(Math.max(0, cards.length * 590 - 1800), st.card * 590 - 590)) : 0;
+    $('cards').style.webkitTransform = $('cards').style.transform = 'translateX(' + (-photoOffset) + 'px)';
     list = $('tiles').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.SHELF && st.shelf === i);
     setClass($('tiles'), 'on', st.zone === Z.SHELF);
     setClass($('platter'), 'on', st.zone === Z.SHELF);
     revealShelf();
+    focusWidgets();
     list = document.querySelectorAll('#drawer .key');
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.DRAWER && st.drawer === i);
     list = document.querySelectorAll('#apps .cell');
@@ -325,7 +330,7 @@
     focusRows($('shelfedit'), st.edit, st.zone === Z.EDIT);
     focusRows($('langpick'), st.lang, st.zone === Z.LANG);
     if (langHint) langHint.textContent = (st.lang + 1) + ' / ' + languageChoices().length + '  ·  ' + tr('OK picks, Back cancels.');
-    setClass(body, 'drawer-open', st.zone === Z.DRAWER);
+    setClass(body, 'drawer-open', st.zone === Z.DRAWER || st.zone === Z.WIDGETS || (st.zone === Z.WIDGETPICK || st.zone === Z.WIDGETORDER));
   }
 
   function focusRows(sheet, index, on) {
@@ -354,14 +359,14 @@
 
   // MARK: - Top: title, tabs, buttons, quotes
 
-  var TAB_KIND = [null, 'movie', 'tv'];
+  var TAB_KIND = [null, 'movie', 'tv'], TAB_COUNT = 6;
 
   function renderTop() {
     $('title').textContent = tr('For You');
     var tabs = $('tabs');
     tabs.innerHTML = '';
-    var names = [tr('Explore'), tr('Movies'), tr('Shows')];
-    for (var i = 0; i < 3; i++) {
+    var names = [tr('Explore'), tr('Movies'), tr('Shows'), tr('Trending'), tr('New releases'), tr('Photos')];
+    for (var i = 0; i < TAB_COUNT; i++) {
       var t = el('button', 'tab', tabs, names[i]);
       hover(t, Z.TOP, i);
     }
@@ -373,7 +378,7 @@
       r.style.left = (1596 + 88 * b) + 'px';
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
-      hover(r, Z.TOP, 3 + b);
+      hover(r, Z.TOP, TAB_COUNT + b);
     }
   }
 
@@ -390,28 +395,36 @@
   // MARK: - Picks and background
 
   function renderCards() {
-    var list = Data.picks(TAB_KIND[st.tab]);
+    if (st.tab === 5) {
+      setClass(body, 'no-picks', false); setClass(body, 'photos-tab', true);
+      if (!$('photo-gallery')) { $('cards').innerHTML = ''; cards = []; openPhotos(); }
+      return;
+    }
+    var list = st.tab === 5 ? (window.LOCAL_PHOTOS || []) : st.tab >= 3 ? Data.collection(st.tab === 3 ? 'trending' : 'releases') : Data.picks(TAB_KIND[st.tab]);
+    setClass(body, 'photos-tab', st.tab === 5);
     var holder = $('cards');
-    setClass(body, 'no-picks', !list.length);
-    var same = list.length === cards.length;
+    setClass(body, 'no-picks', !list.length && st.tab < 3);
+    var same = list.length === cards.length && $('cards').getAttribute('data-tab') === String(st.tab);
     for (var i = 0; same && i < list.length; i++) same = list[i].id === cards[i].id && list[i].backdrop === cards[i].backdrop && list[i].meta === cards[i].meta;
     if (same && holder.children.length === list.length) return;
     cards = list;
+    holder.setAttribute('data-tab', String(st.tab));
     holder.innerHTML = '';
     var rects = [[80, 1040], [1160, 320], [1520, 320]];
     for (var c = 0; c < list.length; c++) {
       var p = list[c], card = el('div', 'card', holder);
-      card.style.left = rects[c][0] + 'px';
-      card.style.width = rects[c][1] + 'px';
+      card.style.left = (st.tab >= 3 ? 80 + c * 590 : rects[c][0]) + 'px';
+      card.style.width = (st.tab >= 3 ? 550 : rects[c][1]) + 'px';
       var img = el('div', 'img', card);
-      img.style.backgroundImage = 'url(' + Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780') + ')';
-      el('div', 'name', card, p.title);
-      if (c === 0 && p.meta) el('div', 'meta', card, p.meta);
+      img.style.backgroundImage = 'url(' + (st.tab === 5 ? p.backdrop : Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780')) + ')';
+      if (st.tab !== 5) el('div', 'name', card, p.title);
+      if (st.tab < 3 && c === 0 && p.meta) el('div', 'meta', card, p.meta);
       hover(card, Z.CARDS, c);
     }
+    if (!list.length && st.tab >= 3) el('div', 'recommendations-empty', holder, st.tab === 5 ? tr('No photos added yet.') : Data.hasKey() ? tr('No suggestions yet. Check your filters or wait for TMDB to update.') : tr('Add your TMDB key to see recommendations.'));
     st.card = Math.min(st.card, Math.max(0, list.length - 1));
     if (!list.length && st.zone === Z.CARDS) st.zone = Z.SHELF;
-    backdrop(list.length ? Data.image(list[0].backdrop, 'w300') : '');
+    backdrop(st.tab === 5 ? '' : (list.length ? Data.image(list[0].backdrop, 'w300') : ''));
     updateFocus();
   }
 
@@ -448,6 +461,7 @@
   /** On the minute, so the clock never runs late (the 30-second refresh could, by up to 30 s). */
   function tickClock() {
     renderClock();
+    renderWidgetClock();
     setTimeout(tickClock, 60000 - Date.now() % 60000 + 50);
   }
 
@@ -554,27 +568,220 @@
     updateFocus();
   }
 
+  var widgetCards = [], widgetOffset = 0, widgetTotal = 0;
+  var widgetDrag = null, widgetIgnoreClickUntil = 0, widgetRenderPending = false;
+
+  function selectedWidgets() {
+    var order = WidgetCatalog.order(Prefs.widgetOrder());
+    var legacy = {weather: Prefs.weather(), performance: Metrics.enabled(), prices: Data.activeCoins().length > 0};
+    ['weather', 'performance', 'prices'].forEach(function (id) {
+      if (legacy[id] && order.indexOf(id) < 0) order.push(id);
+    });
+    return order.filter(function (id) { return legacy[id] !== false; });
+  }
+
+  function openWidgetOrder(fromCarousel) {
+    var selected = selectedWidgets(), current = st.widget, focused = selected[current];
+    setClass($('settings'), 'open', false);
+    st.zone = Z.WIDGETORDER; updateFocus();
+    WidgetOrganizer.open(selected, fromCarousel ? current : 0, function (order, modes) {
+      var hidden = WidgetCatalog.order(Prefs.widgetOrder()).filter(function (id) { return selected.indexOf(id) < 0 && order.indexOf(id) < 0; });
+      selected.forEach(function (id) {
+        if (order.indexOf(id) >= 0) return;
+        if (id === 'weather') Prefs.set('weather', false);
+        if (id === 'performance' && Metrics.enabled()) Metrics.toggle();
+        if (id === 'prices') Prefs.set('quotes', false);
+      });
+      Prefs.set('widgetOrder', order.concat(hidden));
+      Prefs.set('widgetModes', modes);
+      renderQuotes(); renderPanels();
+    }, function () {
+      if (fromCarousel) {
+        st.zone = Z.WIDGETS;
+        st.widget = Math.max(0, selectedWidgets().indexOf(focused));
+        updateFocus();
+      } else {
+        openSettings();
+        for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].widgetOrder) st.row = i;
+        updateFocus();
+      }
+    }, Prefs.widgetModes());
+  }
+
+  function openWidgetPicker() {
+    var added = null;
+    st.zone = Z.WIDGETPICK; updateFocus();
+    WidgetPicker.open(selectedWidgets(), function (id) {
+      var order = selectedWidgets();
+      if (order.indexOf(id) < 0) order.push(id);
+      Prefs.set('widgetOrder', order);
+      if (id === 'weather') Prefs.set('weather', true);
+      if (id === 'performance' && !Metrics.enabled()) Metrics.toggle();
+      if (id === 'prices') { Prefs.set('quotes', true); Prefs.setCoin(0, true); Data.settingsChanged(); }
+      added = id;
+    }, function () {
+      st.zone = Z.WIDGETS;
+      renderPanels();
+      st.widget = added ? selectedWidgets().indexOf(added) : widgetCards.length - 1;
+      updateFocus();
+    });
+  }
+
+  function renderWidgetClock() {
+    var card = $('clock-widget');
+    if (!card) return;
+    var time = card.querySelector('.widget-clock-time'), date = card.querySelector('.widget-clock-date');
+    if (time) time.textContent = formatDate('format|h:mm', Date.now());
+    if (date) date.textContent = formatDate('format|EEEE, MMMM d', Date.now());
+  }
+
+  function startWidgetDrag(e) {
+    if (st.zone !== Z.DRAWER && st.zone !== Z.WIDGETS) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    var point = e.touches ? e.touches[0] : e;
+    widgetDrag = {x: point.clientX, y: point.clientY, offset: widgetOffset, active: false};
+  }
+  function moveWidgetDrag(e) {
+    if (!widgetDrag) return;
+    var point = e.touches ? e.touches[0] : e;
+    var dx = point.clientX - widgetDrag.x, dy = point.clientY - widgetDrag.y;
+    if (!widgetDrag.active && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) widgetDrag.active = true;
+    if (!widgetDrag.active) return;
+    if (e.cancelable) e.preventDefault();
+    var viewport = $('widgets'), track = $('widget-track');
+    if (!viewport || !track) return;
+    var scale = viewport.getBoundingClientRect().width / 1760;
+    widgetOffset = WidgetCatalog.clamp(widgetDrag.offset - dx / scale, widgetTotal, 1760);
+    track.style.webkitTransition = track.style.transition = 'none';
+    track.style.webkitTransform = track.style.transform = 'translateX(' + (-widgetOffset) + 'px)';
+    updateWidgetArrows();
+  }
+  function endWidgetDrag() {
+    if (!widgetDrag) return;
+    var moved = widgetDrag.active; widgetDrag = null;
+    if (moved) {
+      widgetIgnoreClickUntil = Date.now() + 350;
+      st.zone = Z.WIDGETS;
+      var best = 0, distance = Infinity;
+      for (var i = 0; i < widgetCards.length; i++) {
+        var card = widgetCards[i], center = parseFloat(card.style.left) + parseFloat(card.style.width) / 2;
+        var d = Math.abs(center - widgetOffset - 880);
+        if (d < distance) { distance = d; best = i; }
+      }
+      st.widget = best;
+      var track = $('widget-track');
+      if (track) track.style.webkitTransition = track.style.transition = '';
+      updateFocus();
+    }
+    if (widgetRenderPending) { widgetRenderPending = false; renderPanels(); }
+  }
+  document.addEventListener('mousemove', moveWidgetDrag);
+  document.addEventListener('mouseup', endWidgetDrag);
+  document.addEventListener('touchmove', moveWidgetDrag, false);
+  document.addEventListener('touchend', endWidgetDrag);
+  document.addEventListener('touchcancel', endWidgetDrag);
+  window.addEventListener('blur', endWidgetDrag);
+
+  function focusWidgets() {
+    var track = $('widget-track');
+    if (!track) return;
+    st.widget = Math.max(0, Math.min(widgetCards.length - 1, st.widget));
+    for (var i = 0; i < widgetCards.length; i++) setClass(widgetCards[i], 'focus', st.zone === Z.WIDGETS && i === st.widget);
+    var card = widgetCards[st.widget];
+    if (card) {
+      var left = parseFloat(card.style.left), right = left + parseFloat(card.style.width);
+      if (left < widgetOffset) widgetOffset = left;
+      if (right > widgetOffset + 1760) widgetOffset = right - 1760;
+    }
+    track.style.webkitTransform = track.style.transform = 'translateX(' + (-widgetOffset) + 'px)';
+    updateWidgetArrows();
+  }
+
+  function updateWidgetArrows() {
+    var edges = WidgetCatalog.edges(widgetOffset, widgetTotal, 1760), left = $('widget-prev'), right = $('widget-next');
+    if (left) { left.style.visibility = edges.left ? '' : 'hidden'; left.disabled = !edges.left; }
+    if (right) { right.style.visibility = edges.right ? '' : 'hidden'; right.disabled = !edges.right; }
+  }
+
   function renderPanels() {
-    var d = $('drawer');
-    var old = d.querySelectorAll('.panel');
-    for (var o = 0; o < old.length; o++) d.removeChild(old[o]);
-    var wx = Prefs.weather(), coins = Data.activeCoins(), qt = coins.length > 0;
-    var split = 80 + 1760 * 0.585;
-    if (wx) {
-      var w = el('div', 'panel glass', d);
-      w.id = 'weather';
-      w.style.left = '80px';
-      w.style.width = ((qt ? split - 16 : 1840) - 80) + 'px';
-      renderWeather(w);
+    if (widgetDrag) { widgetRenderPending = true; return; }
+    var d = $('drawer'), old = $('widgets'), oldHint = $('widget-hint');
+    if (old) d.removeChild(old);
+    if (oldHint) d.removeChild(oldHint);
+    if ($('widget-prev')) d.removeChild($('widget-prev'));
+    if ($('widget-next')) d.removeChild($('widget-next'));
+    Metrics.unmount(); widgetCards = [];
+    var coins = Data.activeCoins(), defs = selectedWidgets().concat(['add']);
+    var viewport = el('div', '', d); viewport.id = 'widgets';
+    var track = el('div', '', viewport); track.id = 'widget-track';
+    viewport.addEventListener('mousedown', startWidgetDrag);
+    viewport.addEventListener('touchstart', startWidgetDrag);
+    var at = 0, modes = WidgetCatalog.modes(Prefs.widgetModes()), w = Data.weather;
+    var forecast = w && (Prefs.forecast() === 'days' && w.days && w.days.length ? w.days : w.hours);
+    var content = {weather: !!w, forecast: !!(forecast && forecast.length), sun: !!(w && (w.sunrise || w.sunset)), coins: coins.length};
+    for (var i = 0; i < defs.length; i++) {
+      var mode = modes[defs[i]] || 'full', size = WidgetCatalog.layout(defs[i], mode, content), width = size.width;
+      var card = el('div', 'panel glass widget' + (mode === 'compact' ? ' compact' : ''), track);
+      card.setAttribute('data-view', mode);
+      if (defs[i] === 'weather' && !content.forecast) setClass(card, 'weather-simple', true);
+      if (defs[i] === 'weather' && !w) setClass(card, 'weather-empty', true);
+      card.id = defs[i] === 'performance' ? 'performance-widget' : defs[i] === 'clock' ? 'clock-widget' : defs[i] === 'add' ? 'add-widget' : defs[i];
+      card.setAttribute('role', defs[i] === 'add' ? 'button' : 'group');
+      card.setAttribute('aria-label', defs[i] === 'add' ? tr('Add widgets') : WidgetCatalog.title(defs[i]));
+      card.style.left = at + 'px'; card.style.width = width + 'px'; card.style.height = size.height + 'px';
+      widgetCards.push(card); at += width + 32;
+      if (defs[i] === 'weather') renderWeather(card);
+      else if (defs[i] === 'prices') renderPrices(card, coins);
+      else if (defs[i] === 'performance') Metrics.mount(card, mode === 'compact');
+      else if (defs[i] === 'clock') {
+        el('div', 'head', card, WidgetCatalog.title('clock'));
+        el('div', 'widget-clock-time', card); el('div', 'widget-clock-date', card);
+      } else if (defs[i] === 'sun') {
+        el('div', 'head', card, WidgetCatalog.title('sun'));
+        var weather = Data.weather, sun = el('div', 'widget-sun', card);
+        if (weather && weather.sunrise && weather.sunset) {
+          el('div', '', sun, trf('Sunrise {time}', {time: Data.time(weather.sunrise)}));
+          el('div', '', sun, trf('Sunset {time}', {time: Data.time(weather.sunset)}));
+          el('div', 'widget-sun-city', sun, Data.city);
+        } else el('div', '', sun, tr('No weather data right now.'));
+      } else {
+        el('div', 'widget-plus', card, '+');
+        el('div', 'widget-add-label', card, tr('Add widgets'));
+      }
+      (function (card, index) {
+        card.onmouseover = function () {
+          if (widgetDrag) return;
+          if (st.zone !== Z.DRAWER && st.zone !== Z.WIDGETS) return;
+          st.zone = Z.WIDGETS; st.widget = index; updateFocus();
+        };
+        card.onclick = function () {
+          if (Date.now() < widgetIgnoreClickUntil || (st.zone !== Z.DRAWER && st.zone !== Z.WIDGETS)) return;
+          st.zone = Z.WIDGETS; st.widget = index; updateFocus();
+          if (card.id === 'add-widget') openWidgetPicker(); else openWidgetOrder(true);
+        };
+      })(card, i);
     }
-    if (qt) {
-      var q = el('div', 'panel glass', d);
-      q.id = 'prices';
-      var left = wx ? split + 16 : 80;
-      q.style.left = left + 'px';
-      q.style.width = (1840 - left) + 'px';
-      renderPrices(q, coins);
+    [-1, 1].forEach(function (direction) {
+      var arrow = el('button', 'widget-edge', d);
+      arrow.id = direction < 0 ? 'widget-prev' : 'widget-next'; arrow.type = 'button';
+      arrow.setAttribute('aria-label', direction < 0 ? tr('Previous widgets') : tr('More widgets'));
+      var icon = sym('chevron_right', arrow);
+      if (direction < 0) icon.className += ' back';
+      arrow.onclick = function () {
+        if (st.zone !== Z.DRAWER && st.zone !== Z.WIDGETS) return;
+        st.zone = Z.WIDGETS;
+        st.widget = Math.max(0, Math.min(widgetCards.length - 1, st.widget + direction));
+        updateFocus();
+      };
+    });
+    widgetTotal = at - 32;
+    widgetOffset = WidgetCatalog.clamp(widgetOffset, widgetTotal, 1760);
+    renderWidgetClock();
+    if (widgetTotal > 1760) {
+      var hint = el('div', '', d, tr('Left/Right browses. OK arranges widgets. + adds a widget.'));
+      hint.id = 'widget-hint';
     }
+    focusWidgets();
   }
 
   function renderWeather(card) {
@@ -589,10 +796,11 @@
     el('span', 'temp', now, Data.degrees(w.temp));
     el('div', 'cond', card, Data.condition(w.code, w.isDay));
     el('div', 'range', card, trf('H:{max}', {max: Data.degrees(w.max)}) + '   ' + trf('L:{min}', {min: Data.degrees(w.min)}));
+    if (card.getAttribute('data-view') === 'compact') return;
     el('div', 'split', card);
     // Home Settings → Forecast: the next 6 hours or the next 5 days (the hours until a forecast has days).
     var days = Prefs.forecast() === 'days' && w.days && w.days.length > 0, list = days ? w.days : w.hours, n = days ? 5 : 6;
-    var hours = el('div', 'hours', card), width = parseFloat(card.style.width) - 30 - 422, hw = width / n;
+    var hours = el('div', 'hours', card), width = Math.max(0, parseFloat(card.style.width) - 30 - 422), hw = width / n;
     for (var i = 0; list && i < list.length && i < n; i++) {
       var h = el('div', 'hour', hours), x = list[i];
       h.style.left = (hw * i) + 'px';
@@ -613,9 +821,9 @@
     el('div', 'side', card, stale ? trf('quotes|{ago}', {ago: stale}) : tr('24h change'));
     for (var j = 0; j < coins.length; j++) {
       var i = coins[j], row = el('div', 'coin', card);
-      row.style.top = (86 + 52 * j) + 'px';
+      row.style.top = (card.getAttribute('data-view') === 'compact' ? 68 + 44 * j : 86 + 52 * j) + 'px';
       coin(i, row);
-      el('span', 'n', row, Data.coinName(i));
+      el('span', 'n', row, Data.coinName(i)).title = Data.coinName(i);
       el('span', 'p', row, Data.money(Data.prices[i]));
       var ch = Data.changes[i];
       if (!isNaN(ch)) el('span', 'c ' + (ch >= 0 ? 'up' : 'down'), row, Data.change(ch));
@@ -668,7 +876,11 @@
     setClass($('shelfedit'), 'open', false);
     setClass($('langpick'), 'open', false);
     langHint = null;
+    TitleDetails.hide();
+    RecommendationSettings.hide();
     CityPicker.hide();
+    WidgetPicker.hide();
+    WidgetOrganizer.hide();
     st.zone = Z.SHELF;
     updateFocus();
   }
@@ -679,16 +891,19 @@
     var unit = Prefs.temperature(), theme = Prefs.theme();
     var auto = tr('Automatic'), picked = pickedLanguage();
     var rows = [
-      {label: tr('Weather city'), value: Data.city || tr('Automatic'), opens: true, city: true,
-        step: function (d) { if (d >= 0) openCity(); }},
       {label: tr('Language'), value: picked === 'auto' ? auto : I18N.languageName(picked), opens: true, language: true,
         step: function (d) { if (d >= 0) openLanguages(); }},
       {label: tr('Temperature'), value: unit === 'C' ? '°C' : unit === 'F' ? '°F' : tr('unit|Automatic'),
         step: function (d) { cycle('temperature', ['auto', 'C', 'F'], unit, d); renderPanels(); }},
       {label: tr('Theme'), value: theme === 'light' ? tr('Light') : theme === 'dark' ? tr('Dark') : auto,
         step: function (d) { cycle('theme', ['auto', 'light', 'dark'], theme, d); checkNight(); }},
+      {label: tr('Glass transparency'), value: Prefs.transparency() + '%',
+        step: function (d) { Prefs.set('transparency', Math.max(0, Math.min(95, Prefs.transparency() + d * 5))); Glass.apply(Prefs.transparency()); }},
+      {label: tr('Preview screensaver'), value: '›', step: function (d) { if (d >= 0) { closeSheets(); showSaver(); } }},
       {label: tr('Weather widget'), toggle: Prefs.weather(),
         step: function () { Prefs.set('weather', !Prefs.weather()); renderPanels(); }},
+      {label: tr('Weather city'), value: Data.city || tr('Automatic'), opens: true, city: true,
+        step: function (d) { if (d >= 0) openCity(); }},
       {label: tr('Forecast'), value: Prefs.forecast() === 'days' ? tr('Next days') : tr('Next hours'),
         step: function (d) { cycle('forecast', ['hours', 'days'], Prefs.forecast(), d); renderPanels(); }},
       {label: tr('Quotes widget'), toggle: Prefs.quotes(),
@@ -702,11 +917,26 @@
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
     }
+    rows.push({label: tr('TMDB recommendations'), value: '›', recommendations: true,
+      step: function (d) { if (d >= 0) openRecommendations(); }});
+    rows.push({label: tr('Widget order'), value: '›', widgetOrder: true,
+      step: function (d) { if (d >= 0) openWidgetOrder(false); }});
     rows.push({label: tr('Performance panel'), toggle: window.Metrics && Metrics.enabled(),
-      step: function () { if (window.Metrics) Metrics.toggle(); }});
+      step: function () { if (window.Metrics) { Metrics.toggle(); renderPanels(); } }});
     rows.push({label: tr('Shelf'), value: '›', step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('TV Settings'), value: '›', step: function (d) { if (d >= 0) tvSettings(); }});
     return rows;
+  }
+
+  function openRecommendations() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.RECS;
+    updateFocus();
+    RecommendationSettings.open(function () {
+      openSettings();
+      for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].recommendations) st.row = i;
+      updateFocus();
+    });
   }
 
   function openCity() {
@@ -803,7 +1033,8 @@
     var code = languageChoices()[st.lang];
     if (pick && code !== pickedLanguage()) {
       Prefs.set('language', code);
-      I18N.set(Prefs.language());
+      Glass.apply(Prefs.transparency());
+  I18N.set(Prefs.language());
       renderAll();
       Data.refresh();   // the picks' titles and genres come in the new language
     }
@@ -815,7 +1046,7 @@
   // MARK: - Shelf editor: which apps, in what order
 
   function editList() {
-    var ids = shelf.map(function (a) { return a.id; });
+    var ids = pinned.map(function (a) { return a.id; });
     return {ids: ids, rows: apps.slice().sort(function (a, b) {
       var ia = ids.indexOf(a.id), ib = ids.indexOf(b.id);
       if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
@@ -833,11 +1064,11 @@
     list.style.height = Math.min(e.rows.length, 7) * 78 + 'px';
     for (var i = 0; i < e.rows.length; i++) {
       var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder, a.title);
-      var place = el('span', 'value', row, at >= 0 ? '#' + (at + 1) : tr('shelf|Off'));
+      var place = el('span', 'value', row, at >= 0 ? '#' + (at + 1) : tr('After favorites'));
       if (at >= 0) sym('check', place).style.marginLeft = '16px';   // on the shelf: a check, as in the pickers
       hover(row, Z.EDIT, i);
     }
-    el('div', 'hint', box, tr('OK adds or removes an app. ← → change the order.'));
+    el('div', 'hint', box, tr('OK selects favorites. Left/Right changes their order. Other apps follow.'));
     updateFocus();
   }
 
@@ -881,6 +1112,19 @@
     };
   }
 
+  function openTitleDetails(p) {
+    st.zone = Z.DETAILS; updateFocus();
+    TitleDetails.open(p, function () { st.zone = Z.CARDS; updateFocus(); });
+  }
+
+  function openPhotos() {
+    st.zone = Z.PHOTOS; updateFocus();
+    PhotoGallery.open(window.LOCAL_PHOTOS || [], function (at, photos, resume) {
+      st.zone = Z.PHOTOS;
+      showPhoto(at, photos, resume);
+    }, function (destination) { st.zone = destination === 'shelf' ? Z.SHELF : Z.TOP; st.top = 5; updateFocus(); }, $('cards'));
+  }
+
   function tvSettings() {
     TV.settings(function (ok) {
       if (!ok) toast(tr("Couldn't open TV Settings"));
@@ -894,15 +1138,20 @@
 
   function activate() {
     switch (st.zone) {
+      case Z.WIDGETS:
+        if (widgetCards[st.widget] && widgetCards[st.widget].id === 'add-widget') openWidgetPicker();
+        else if (widgetCards[st.widget]) openWidgetOrder(true);
+        return;
       case Z.TOP:
-        if (st.top < 3) return;
-        if (st.top === 3) { var live = liveTV(); if (live) launcher(live.id, tr('Live TV'))(); }
-        else if (st.top === 4) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
+        if (st.top < TAB_COUNT) return;
+        if (st.top === TAB_COUNT) { var live = liveTV(); if (live) launcher(live.id, tr('Live TV'))(); }
+        else if (st.top === TAB_COUNT + 1) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
         else openSettings();
         return;
       case Z.CARDS:
-        var p = cards[st.card], app = p && Data.appFor(p.app);
-        if (app) launcher(app.id, app.title)();
+        if (st.tab === 5) { showPhoto(st.card); return; }
+        var p = cards[st.card];
+        if (p) openTitleDetails(p);
         return;
       case Z.SHELF:
         if (shelf[st.shelf]) launcher(shelf[st.shelf].id, shelf[st.shelf].title)();
@@ -927,8 +1176,10 @@
 
   function selectTab(i) {
     if (i === st.tab) return;
+    PhotoGallery.hide();
     st.tab = i;
-    renderCards();
+    if (i === 5) { $('cards').innerHTML = ''; cards = []; openPhotos(); }
+    else renderCards();
   }
 
   function move(dx, dy) {
@@ -938,6 +1189,7 @@
         if (dx) st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
         else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
+          if (st.tab === 5) { st.zone = Z.PHOTOS; PhotoGallery.focusFirst(); return; }
           if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
           else { st.zone = Z.TOP; st.top = st.tab; }
         }
@@ -949,16 +1201,22 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(0, Math.min(5, st.top + dx));
-          if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
+          st.top = Math.max(0, Math.min(TAB_COUNT + 2, st.top + dx));
+          if (st.top < TAB_COUNT) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
+          if (st.tab === 5) { st.zone = Z.PHOTOS; PhotoGallery.focusFirst(); return; }
+          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < TAB_COUNT ? 0 : cards.length - 1); }
           else st.zone = Z.SHELF;
         }
         break;
       case Z.DRAWER:
         if (dx) st.drawer = Math.max(0, Math.min(drawerItems.length - 1, st.drawer + dx));
         else if (dy < 0) { closeDrawer(); return; }
+        else if (dy > 0 && widgetCards.length) { st.zone = Z.WIDGETS; }
+        break;
+      case Z.WIDGETS:
+        if (dx) st.widget = Math.max(0, Math.min(widgetCards.length - 1, st.widget + dx));
+        else if (dy < 0) st.zone = Z.DRAWER;
         break;
       case Z.APPS:
         var g = st.grid + dx + dy * 5;
@@ -982,7 +1240,37 @@
     updateFocus();
   }
 
+  var photoOpen = false, photoIndex = 0, activePhotos = null, photoReturn = null;
+  function showPhoto(index, collection, callback) {
+    if (collection) { activePhotos = collection; photoReturn = callback || null; }
+    var photos = activePhotos || window.LOCAL_PHOTOS || [];
+    if (!photos.length) return;
+    photoIndex = Math.max(0, Math.min(photos.length - 1, index));
+    photoOpen = true;
+    $('photo-viewer').className = 'open';
+    $('photo-viewer').querySelector('img').src = photos[photoIndex].full;
+    $('photo-soft-background').style.backgroundImage = 'url(' + (photos[photoIndex].blur || photos[photoIndex].backdrop) + ')';
+    $('photo-count').textContent = (photoIndex + 1) + ' / ' + photos.length;
+    $('photo-close').textContent = tr('Close');
+    $('photo-prev').disabled = photoIndex === 0;
+    $('photo-next').disabled = photoIndex === photos.length - 1;
+    $('photo-close').onclick = closePhoto;
+    $('photo-prev').onclick = function () { showPhoto(photoIndex - 1); };
+    $('photo-next').onclick = function () { showPhoto(photoIndex + 1); };
+  }
+  function closePhoto() {
+    photoOpen = false;
+    $('photo-viewer').className = '';
+    $('photo-viewer').querySelector('img').removeAttribute('src');
+    $('photo-soft-background').style.backgroundImage = '';
+    if (photoReturn) { var resume = photoReturn; photoReturn = null; activePhotos = null; resume(photoIndex); return; }
+    st.card = photoIndex;
+    st.zone = Z.CARDS;
+    updateFocus();
+  }
+
   function back() {
+    if (st.zone === Z.WIDGETS) { st.zone = Z.DRAWER; updateFocus(); return; }
     if (st.zone === Z.EDIT) { setClass($('shelfedit'), 'open', false); openSettings(); st.row = rowsNow.length - 2; updateFocus(); return; }
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
     if (sheetOpen()) { closeSheets(); return; }
@@ -994,12 +1282,12 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG))) return;
-      if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
-      if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
-      if (zone === Z.SHELF && st.zone === Z.DRAWER) closeDrawer();
+      if (photoOpen || saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG))) return;
+      if (zone === Z.DRAWER && st.zone !== Z.DRAWER && st.zone !== Z.WIDGETS) return;
+      if (zone !== Z.DRAWER && (st.zone === Z.DRAWER || st.zone === Z.WIDGETS) && zone !== Z.SHELF) return;
+      if (zone === Z.SHELF && (st.zone === Z.DRAWER || st.zone === Z.WIDGETS)) closeDrawer();
       st.zone = zone;
-      if (zone === Z.TOP) { st.top = index; if (index < 3) selectTab(index); }
+      if (zone === Z.TOP) { st.top = index; if (index < TAB_COUNT) selectTab(index); }
       else if (zone === Z.CARDS) st.card = index;
       else if (zone === Z.SHELF) st.shelf = index;
       else if (zone === Z.DRAWER) st.drawer = index;
@@ -1036,7 +1324,7 @@
     try { localStorage.setItem('fmtv.night', night ? 'true' : 'false'); } catch (e) {}   // for index.html, next start
   }
 
-  var saverOn = false, idleAt = Date.now(), saverIndex = 0, saverTimer = 0, SAVER_AFTER = 5 * 60000;
+  var saverOn = false, idleAt = Date.now(), saverIndex = 0, saverTimer = 0, saverMotion = 0, SAVER_AFTER = 5 * 60000;
 
   /** The screensaver's photos: picks with an app on the TV. */
   function saverPhotos() {
@@ -1044,37 +1332,26 @@
   }
 
   function showSaver() {
-    var photos = saverPhotos();
+    hideSaver();
     saverOn = true;
     var s = $('saver');
     s.innerHTML = '';
-    var a = el('div', 'photo', s), b = el('div', 'photo', s);
-    el('div', 'shade', s);
-    var clock = el('div', 'clock', s);
-    el('div', 'time', clock);
-    el('div', 'date', clock);
-    el('div', 'title', clock);
-    var front = a;
-    function next() {
-      if (!saverOn) return;
-      var p = photos.length ? photos[saverIndex++ % photos.length] : null;
-      var back = front === a ? b : a;
-      if (p) {
-        back.style.backgroundImage = 'url(' + Data.image(p.backdrop, 'original') + ')';
-        back.style.webkitTransform = back.style.transform = 'scale(1.0)';
-        clock.lastChild.textContent = p.title;
-        setTimeout(function () {
-          setClass(back, 'on', true);
-          setClass(front, 'on', false);
-          back.style.webkitTransform = back.style.transform = 'scale(1.08) translateX(-1.5%)';
-          front = back;
-        }, 60);
-      }
-      tickSaverClock(clock);
-      saverTimer = setTimeout(next, 12000);
-    }
+    var clock = el('div', 'clock dvd-clock', s);
+    el('div', 'time', clock); el('div', 'date', clock);
+    tickSaverClock(clock);
     setClass(s, 'on', true);
-    next();
+    var x = 160, y = 180, dx = 74, dy = 51, last = Date.now(), color = 0;
+    var colors = ['#78e8ff', '#ff81ce', '#a0ff94', '#ffcf70', '#b69cff', '#fff'];
+    function animate() {
+      if (!saverOn || document.hidden) return;
+      var t = Date.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
+      var next = DvdClock.step({x: x, y: y, dx: dx, dy: dy}, dt, 1920 - clock.offsetWidth - 32, 1080 - clock.offsetHeight - 32);
+      x = next.x; y = next.y; dx = next.dx; dy = next.dy;
+      if (next.bounced) clock.style.color = colors[(++color) % colors.length];
+      clock.style.webkitTransform = clock.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+      saverMotion = window.requestAnimationFrame(animate);
+    }
+    saverMotion = window.requestAnimationFrame(animate);
   }
 
   function tickSaverClock(clock) {
@@ -1086,6 +1363,7 @@
   function hideSaver() {
     saverOn = false;
     clearTimeout(saverTimer);
+    if (saverMotion) window.cancelAnimationFrame(saverMotion); saverMotion = 0;
     setClass($('saver'), 'on', false);
   }
 
@@ -1099,7 +1377,18 @@
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
-    if (st.zone === Z.CITY) return;
+    if (photoOpen) {
+      e.stopPropagation();
+      poke();
+      if (k === TV.keys.left) showPhoto(photoIndex - 1);
+      else if (k === TV.keys.right) showPhoto(photoIndex + 1);
+      else if (k === TV.keys.back || k === 27 || k === 8 || k === TV.keys.ok) closePhoto();
+      e.preventDefault();
+      return;
+    }
+    if (st.zone === Z.PHOTOS) { PhotoGallery.handleKey(e); return; }
+    if (st.zone === Z.DETAILS) { TitleDetails.handleKey(e); return; }
+    if (st.zone === Z.DETAILS || st.zone === Z.RECS || st.zone === Z.CITY || (st.zone === Z.WIDGETPICK || st.zone === Z.WIDGETORDER)) return;
     if (poke()) { e.preventDefault(); return; }   // the first press only wakes the screen
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);
@@ -1109,7 +1398,8 @@
     else if (k === TV.keys.back || k === 27 || k === 8) back();
     else return;
     e.preventDefault();
-  });
+    e.stopPropagation();
+  }, true);
   document.addEventListener('mousemove', function () { poke(); });
 
   // MARK: - Start
@@ -1180,10 +1470,11 @@
     loadApps(function () { renderShelf(); renderDrawer(); updateFocus(); Data.refresh(); });
   });
 
+  Glass.apply(Prefs.transparency());
   I18N.set(Prefs.language());
   checkNight();   // now, from the last forecast: not after the TV lists its apps, with the day look until then
   // LG's screensaver waits only when ours will show: not under a sheet (ours waits there), and not without photos.
-  TV.holdScreenSaver(function () { return !sheetOpen() && saverPhotos().length > 0; });
+  TV.holdScreenSaver(function () { return !sheetOpen(); });
   fit();
   renderTop();
   tickClock();
@@ -1194,7 +1485,7 @@
   setInterval(function () {
     checkNight();
     Data.refresh();
-    if (!saverOn && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) showSaver();
+    if (!saverOn && !photoOpen && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) showSaver();
     if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
   }, 30000);
 
