@@ -22,6 +22,9 @@ fi
 if [ "$what" = all ] || [ "$what" = web ]; then
   node tools/test_metrics.js
   node tools/test_city.js
+  node tools/test_widgets.js
+  node tools/test_shelf_order.js
+  node tools/test_recommendations.js
   python3 tools/translate.py --check
 
   # The generic LG and Samsung packages land where your own build leaves yours (with your city and TMDB key):

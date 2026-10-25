@@ -22,12 +22,16 @@ reads['/proc/meminfo'] = 'MemTotal: 1000 kB\nMemFree: 50 kB\n';
 handler({respond: function (r) { response = r; }});
 assert.strictEqual(response.cpu, null);
 assert.strictEqual(response.ram, null, 'Missing counters must stay unavailable');
-var panel, next, interval, onVisibility;
+var next, interval, onVisibility;
+function element() {
+  var value = '', children = [];
+  return {style: {}, appendChild: function (n) { children.push(n); },
+    set textContent(v) { value = v; },
+    get textContent() { return value + ' ' + children.map(function (n) { return n.textContent; }).join(' '); }};
+}
+var panel = element();
 var document = {
-  hidden: false,
-  createElement: function () { panel = {style: {}}; return panel; },
-  getElementById: function () { return {appendChild: function () {}}; },
-  querySelector: function () { return null; },
+  hidden: false, createElement: element,
   addEventListener: function (name, fn) { onVisibility = fn; }
 };
 var context = {
@@ -41,16 +45,17 @@ var context = {
 };
 context.window = context;
 vm.runInNewContext(fs.readFileSync('web/metrics.js', 'utf8'), context);
+context.Metrics.mount(panel);
 for (var i = 0; i <= 120; i++) next(i * 1000 / 60);
 interval();
-assert.ok(/FPS \(UI\): 60.0/.test(panel.textContent));
-assert.ok(/JavaScript memory: Unavailable/.test(panel.textContent));
+assert.ok(/FPS \(UI\)\s+60.0/.test(panel.textContent));
+assert.ok(/JavaScript memory\s+Unavailable/.test(panel.textContent));
 next(2300); interval();
-assert.ok(/Stalls >100 ms: 1/.test(panel.textContent));
+assert.ok(/Stalls >100 ms\s+1/.test(panel.textContent));
 document.hidden = true; onVisibility();
 assert.strictEqual(next, null); assert.strictEqual(interval, null);
 document.hidden = false; onVisibility(); next(100000); next(100016); interval();
-assert.ok(/Stalls >100 ms: 1/.test(panel.textContent), 'Time spent hidden is not a stall');
+assert.ok(/Stalls >100 ms\s+1/.test(panel.textContent), 'Time spent hidden is not a stall');
 context.Metrics.toggle();
 assert.strictEqual(panel.style.display, 'none'); assert.strictEqual(next, null); assert.strictEqual(interval, null);
 console.log('Metrics counters, fallbacks and visibility lifecycle passed.');
