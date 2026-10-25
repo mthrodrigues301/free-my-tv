@@ -1,0 +1,1 @@
+{"id":"io.freemytv.metrics","services":[{"name":"io.freemytv.metrics","description":"Read-only system performance counters","commands":[{"name":"sample","public":true}]}]}
