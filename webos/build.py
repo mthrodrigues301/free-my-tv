@@ -75,11 +75,18 @@ def build(preview, config):
             dirs.add(parent)
             entries.append((base + '/' + parent, None))
         entries.append((base + '/' + path, app[path]))
-    package = json.dumps({'id': app_id, 'version': version, 'app': app_id}, indent=2).encode('utf-8')
+    service_id = app_id + '.metrics'
+    service_base = 'usr/palm/services/' + service_id
+    entries += [('usr/palm/services', None), (service_base, None)]
+    for name in ('package.json', 'services.json', 'service.js'):
+        with open(os.path.join(ROOT, 'webos', 'metrics-service', name), 'rb') as f:
+            entries.append((service_base + '/' + name, f.read()))
+    package = json.dumps({'id': app_id, 'version': version, 'app': app_id,
+                          'services': [service_id]}, indent=2).encode('utf-8')
     entries += [('usr/palm/packages', None), ('usr/palm/packages/' + app_id, None),
                 ('usr/palm/packages/' + app_id + '/packageinfo.json', package)]
 
-    size = sum(len(d) for d in app.values()) + len(package)
+    size = sum(len(data) for _, data in entries if data is not None)
     control = ('Package: %s\nVersion: %s\nSection: misc\nPriority: optional\nArchitecture: all\nInstalled-Size: %d\n'
                'Maintainer: Free My TV <https://freemytv.io>\nDescription: A fast, ad-free home screen.\n'
                'webOS-Package-Format-Version: 2\nwebOS-Packager-Version: 1.0.0\n' % (app_id, version, size))
