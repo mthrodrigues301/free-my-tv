@@ -1,0 +1,9 @@
+# Details, glass and photo experience
+
+Clicking a recommendation opens a detail environment with synopsis, TMDB cast and production languages, an embedded YouTube trailer where embedding is allowed, and a button launching the title's installed streaming app. TMDB does not provide regional dubbing cast or provider audio/subtitle availability; the UI labels this explicitly rather than treating production languages as streaming tracks. The YouTube app button is a fallback for videos whose publisher or platform refuses embedding.
+
+Home Settings → Glass transparency adjusts both menu glass and the app shelf from 0 to 95% transparency, in 5% steps, default 90%. All configuration dialogs share a naturally darker, more opaque fill (roughly 55–67% opacity at the default setting) for legibility. Gradients, highlights and borders give a glass appearance without unsupported backdrop blur on older TVs.
+
+Home Settings → Preview screensaver starts the DVD-style clock immediately. Idle timeout remains five minutes. The clock moves continuously, bounces at the stage edges and changes color at a collision. Movement stops when hidden or dismissed.
+
+Photos stays inside its home tab, keeping navigation and the app shelf visible. The local bundled Flickr justified-layout 4.1.0 library arranges rows by actual JPEG aspect ratio; its Object.assign calls are replaced by a local ES5 helper for older TVs, and the upstream MIT license is included in photo-layout.js. Fisher-Yates shuffling changes order every entry and New composition reshuffles the layout. Only clicking an individual photo opens full-screen viewing, with a pre-blurred local background filling the edges. Viewing uses this same shuffled order and returns to the chosen photo. The library and images are local; photos remain excluded from Git.

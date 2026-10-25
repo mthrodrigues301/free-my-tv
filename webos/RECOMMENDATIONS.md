@@ -1,0 +1,9 @@
+# Recommendation preferences and sections
+
+Home Settings → TMDB recommendations lets the user pick any number of movie genres and series genres independently, include/exclude anime, and select streaming services with an installed app. Genres use OR within each media type. No genre selection means unrestricted genres. All installed services is automatic; explicitly clearing every service means no suggestions. Apply commits the draft; Cancel or Back from the main screen discards it. Preferences persist in `fmtv.prefs`.
+
+Both trending and discovery candidates are checked against genres and regional subscription providers. Anime is identified by TMDB's `anime` keyword, or Animation with Japanese language/origin/production country; TMDB metadata can be incomplete. Other animation is retained when anime is excluded, unless the build's existing hide_animation rule excludes all animation. Only successfully detailed, matching titles can be displayed. Applying preferences clears old picks immediately, invalidates the persistent cache and ignores the outcome of an older in-flight fetch. An offline failure never silently falls back to titles outside the chosen filters.
+
+Explore/Movies/Shows keep hourly picks. Trending shows weekly trending titles with a rating of at least 7/10 and at least 50 movie votes or 20 series votes. New releases shows films and series first released within 90 days, ordered newest first, from the regional subscription catalogue. It does not claim to be the date a streaming service added a title. The same title can appear in both sections. Each section scrolls horizontally with the remote.
+
+Genre names come from TMDB's localized genre catalogue and are cached. Regional availability and installed apps still limit results. Narrow filters can produce empty sections. The TMDB key remains private in config.properties and the personalized package.

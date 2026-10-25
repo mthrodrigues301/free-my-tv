@@ -1,7 +1,9 @@
 # Performance panel (custom fork)
 
-The panel starts enabled. Home Settings → Performance panel toggles it and saves the choice.
-It pauses sampling while the app is hidden. The overlay hides over the screensaver.
+The performance widget starts enabled. Home Settings → Performance panel toggles it and saves the choice.
+Open the bottom drawer with Down; press Down again to focus widgets, then Left/Right to scroll between
+the configured carousel widgets. Select + to add a missing widget. Up/Back returns to the shortcuts. There is no overlay on the home screen.
+Sampling pauses while the app is hidden. The widget is behind the screensaver like the other drawer cards.
 
 - **FPS (UI)**: requestAnimationFrame callback cadence, an estimate of interface responsiveness;
   not GPU presentation rate, video FPS or performance inside other apps.
