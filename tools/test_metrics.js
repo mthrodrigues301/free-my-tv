@@ -3,7 +3,7 @@
 var assert = require('assert'), fs = require('fs'), vm = require('vm');
 var handler, response;
 function Service() {}
-Service.prototype.register = function (name, fn) { handler = fn; };
+Service.prototype.register = function (name, fn) { if (name === 'sample') handler = fn; };
 var reads = {
   '/proc/stat': 'cpu  100 0 50 800 50 0 0 0 100 0\n',
   '/proc/meminfo': 'MemTotal: 1000 kB\nMemFree: 50 kB\nMemAvailable: 400 kB\n'
@@ -45,7 +45,9 @@ var context = {
 };
 context.window = context;
 vm.runInNewContext(fs.readFileSync('web/metrics.js', 'utf8'), context);
+assert.strictEqual(next, undefined, 'No frame loop before the widget is shown');
 context.Metrics.mount(panel);
+context.Metrics.setVisible(true);
 for (var i = 0; i <= 120; i++) next(i * 1000 / 60);
 interval();
 assert.ok(/FPS \(UI\)\s+60.0/.test(panel.textContent));
@@ -56,6 +58,9 @@ document.hidden = true; onVisibility();
 assert.strictEqual(next, null); assert.strictEqual(interval, null);
 document.hidden = false; onVisibility(); next(100000); next(100016); interval();
 assert.ok(/Stalls >100 ms\s+1/.test(panel.textContent), 'Time spent hidden is not a stall');
+context.Metrics.setVisible(false);
+assert.strictEqual(next, null); assert.strictEqual(interval, null);
+context.Metrics.setVisible(true);
 context.Metrics.toggle();
 assert.strictEqual(panel.style.display, 'none'); assert.strictEqual(next, null); assert.strictEqual(interval, null);
 console.log('Metrics counters, fallbacks and visibility lifecycle passed.');
