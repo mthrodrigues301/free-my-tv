@@ -806,6 +806,5 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .rest-soft,.rest-photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-position: center; background-repeat: no-repeat; background-size: cover; }
 .rest-info { white-space: pre-line; font-size: 24px; line-height: 1.5; margin-top: 18px; }
 .rest-message { max-width: 900px; white-space: normal; font-size: 32px; margin-top: 16px; }
-.search-symbol { position: relative; width: 32px; height: 32px; overflow: visible; }
-.search-symbol:before { content: ''; position: absolute; left: 2px; top: 1px; width: 19px; height: 19px; border: 3px solid currentColor; border-radius: 50%; }
-.search-symbol:after { content: ''; position: absolute; left: 24px; top: 23px; width: 13px; height: 3px; background: currentColor; -webkit-transform: rotate(45deg); transform: rotate(45deg); }
+.sym.search-symbol { background: transparent; width: 32px; height: 32px; }
+.search-symbol svg { display: block; }

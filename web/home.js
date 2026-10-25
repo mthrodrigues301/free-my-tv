@@ -22,7 +22,15 @@
 
   function sym(name, parent, size) {
     var s = el('span', 'sym', parent);
-    if (name === 'search') { s.className += ' search-symbol'; return s; }
+    if (name === 'search') {
+      s.className += ' search-symbol';
+      var ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('width', '32'); svg.setAttribute('height', '32'); svg.setAttribute('aria-hidden', 'true');
+      var circle = document.createElementNS(ns, 'circle'); circle.setAttribute('cx', '13'); circle.setAttribute('cy', '13'); circle.setAttribute('r', '8');
+      var handle = document.createElementNS(ns, 'path'); handle.setAttribute('d', 'M19 19L27 27');
+      [circle, handle].forEach(function (part) { part.setAttribute('fill', 'none'); part.setAttribute('stroke', 'currentColor'); part.setAttribute('stroke-width', '2.5'); part.setAttribute('stroke-linecap', 'round'); svg.appendChild(part); });
+      s.appendChild(svg); return s;
+    }
     s.style.webkitMaskImage = 'url(symbols/' + name + '.png)';
     s.style.maskImage = 'url(symbols/' + name + '.png)';
     if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; }
