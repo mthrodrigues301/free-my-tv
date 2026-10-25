@@ -28,3 +28,28 @@ service.register('sample', function (message) {
     });
   });
 });
+
+/* A loopback HTTP document gives YouTube a real referring page in packaged webOS apps.
+ * Bind only to loopback, serve one fixed document, never proxy requests or expose files. */
+var trailerServer = null, trailerPort = null, trailerWaiting = [];
+service.register('trailerPlayer', function (message) {
+  if (trailerPort) { message.respond({returnValue: true, url: 'http://127.0.0.1:' + trailerPort + '/player'}); return; }
+  trailerWaiting.push(message);
+  if (trailerServer) return;
+  var http = require('http');
+  trailerServer = http.createServer(function (request, response) {
+    if (request.method !== 'GET' || request.url !== '/player') { response.writeHead(404); response.end(); return; }
+    fs.readFile(__dirname + '/trailer-player.html', function (error, html) {
+      response.writeHead(error ? 500 : 200, {'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'});
+      response.end(error ? 'Player unavailable' : html);
+    });
+  });
+  trailerServer.on('error', function () {
+    trailerServer = null; trailerPort = null;
+    var waiting = trailerWaiting; trailerWaiting = []; waiting.forEach(function (m) { m.respond({returnValue: false, errorText: 'Could not start local player'}); });
+  });
+  trailerServer.listen(0, '127.0.0.1', function () {
+    trailerPort = trailerServer.address().port;
+    var waiting = trailerWaiting; trailerWaiting = []; waiting.forEach(function (m) { m.respond({returnValue: true, url: 'http://127.0.0.1:' + trailerPort + '/player'}); });
+  });
+});
