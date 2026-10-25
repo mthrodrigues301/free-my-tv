@@ -9,13 +9,13 @@ var MediaSearch = (function () {
     if (!controls.length) return;
     current = Math.max(0, Math.min(controls.length - 1, at)); controls[current].focus();
     if (current >= 6 && current < 6 + cards.length) {
-      var row = Math.floor((current - 6) / 4); results.scrollTop = Math.max(0, row * 380 - 380);
+      var row = Math.floor((current - 6) / 4); results.scrollTop = Math.max(0, row * 320 - 320);
     }
     loadVisible();
   }
   function loadVisible() {
     if (!results) return;
-    var first = Math.max(0, Math.floor(results.scrollTop / 380) * 4 - 4), last = first + 16;
+    var first = Math.max(0, Math.floor(results.scrollTop / 320) * 4 - 4), last = first + 16;
     for (var i = first; i < cards.length && i < last; i++) {
       var img = cards[i].querySelector('img');
       if (img && !img.getAttribute('src')) img.src = img.getAttribute('data-src');
@@ -35,7 +35,7 @@ var MediaSearch = (function () {
             suspended = true; sheet.className = 'layer media-search';
             detail(p, function () { suspended = false; sheet.className = 'layer media-search open'; focus(6 + index); });
           }); card.className = 'search-result'; card.setAttribute('aria-label', p.title);
-          if (p.poster || p.backdrop) { var img = node('img', '', card); img.alt = ''; img.setAttribute('data-src', Data.image(p.poster || p.backdrop, p.poster ? 'w342' : 'w500')); }
+          if (p.poster || p.backdrop) { var img = node('img', '', card); img.alt = ''; if (!p.backdrop) img.className = 'poster-only'; img.setAttribute('data-src', Data.image(p.backdrop || p.poster, p.backdrop ? 'w780' : 'w342')); }
           else node('div', tr('No image'), card, 'search-no-image');
           node('div', p.title, card, 'search-result-title');
           node('small', (p.kind === 'movie' ? tr('Movies') : tr('Shows')) + (p.year ? ' · ' + p.year : ''), card);
