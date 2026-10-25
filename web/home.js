@@ -292,11 +292,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang'};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city'};
   var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY; }
 
   function updateFocus() {
     var i, list;
@@ -668,6 +668,7 @@
     setClass($('shelfedit'), 'open', false);
     setClass($('langpick'), 'open', false);
     langHint = null;
+    CityPicker.hide();
     st.zone = Z.SHELF;
     updateFocus();
   }
@@ -678,6 +679,8 @@
     var unit = Prefs.temperature(), theme = Prefs.theme();
     var auto = tr('Automatic'), picked = pickedLanguage();
     var rows = [
+      {label: tr('Weather city'), value: Data.city || tr('Automatic'), opens: true, city: true,
+        step: function (d) { if (d >= 0) openCity(); }},
       {label: tr('Language'), value: picked === 'auto' ? auto : I18N.languageName(picked), opens: true, language: true,
         step: function (d) { if (d >= 0) openLanguages(); }},
       {label: tr('Temperature'), value: unit === 'C' ? '°C' : unit === 'F' ? '°F' : tr('unit|Automatic'),
@@ -704,6 +707,17 @@
     rows.push({label: tr('Shelf'), value: '›', step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('TV Settings'), value: '›', step: function (d) { if (d >= 0) tvSettings(); }});
     return rows;
+  }
+
+  function openCity() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.CITY;
+    updateFocus();
+    CityPicker.open(function () {
+      openSettings();
+      for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].city) st.row = i;
+      updateFocus();
+    });
   }
 
   function cycle(name, values, current, d) {
@@ -1085,6 +1099,7 @@
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    if (st.zone === Z.CITY) return;
     if (poke()) { e.preventDefault(); return; }   // the first press only wakes the screen
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);

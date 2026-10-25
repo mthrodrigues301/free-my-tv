@@ -23,15 +23,33 @@ var Place = (function () {
 
   var tz = zone(TV.zone()), set = CONFIG.latitude !== '' && CONFIG.latitude !== undefined;
   var country = (CONFIG.tmdbRegion || (tz ? tz.country : '') || 'US').toUpperCase();
-  return {
+  var saved = null;
+  try { saved = (JSON.parse(localStorage.getItem('fmtv.prefs')) || {}).weatherCity; } catch (e) {}
+  function valid(c) {
+    return c && typeof c.name === 'string' && c.name.length > 0 && c.name.length <= 200 &&
+      typeof c.lat === 'number' && isFinite(c.lat) && Math.abs(c.lat) <= 90 &&
+      typeof c.lon === 'number' && isFinite(c.lon) && Math.abs(c.lon) <= 180;
+  }
+  var defaults = {lat: set ? CONFIG.latitude : tz ? tz.lat : '40.7128',
+    lon: set ? CONFIG.longitude : tz ? tz.lon : '-74.0060', city: CONFIG.city || (!set && tz ? tz.name : '')};
+  var place = {
     lat: set ? CONFIG.latitude : tz ? tz.lat : '40.7128',
     lon: set ? CONFIG.longitude : tz ? tz.lon : '-74.0060',
     city: CONFIG.city || (!set && tz ? tz.name : ''),
     country: country,
     currency: (CONFIG.currency || (country === 'BR' ? 'BRL' : EURO.test(country) ? 'EUR' : 'USD')).toUpperCase(),
     /** Fahrenheit for TVs in the US (by their time zone, or their language when it doesn't tell). */
-    fahrenheit: tz ? tz.country === 'US' : /-US$/i.test(navigator.language || '')
+    fahrenheit: tz ? tz.country === 'US' : /-US$/i.test(navigator.language || ''),
+    choose: function (c) {
+      if (c !== null && !valid(c)) return false;
+      this.lat = c ? c.lat : defaults.lat; this.lon = c ? c.lon : defaults.lon;
+      this.city = c ? c.name : defaults.city;
+      return true;
+    },
+    valid: valid
   };
+  if (valid(saved)) place.choose(saved);
+  return place;
 })();
 
 var Prefs = (function () {
@@ -98,7 +116,7 @@ var Data = (function () {
   // asking again, and offline too.
   var QUERY = '&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code'
       + '&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48';
-  var weather = null, weatherAt = 0, fetchingWeather = false;
+  var weather = null, weatherAt = 0, fetchingWeather = false, weatherRequestId = 0;
   (function () {
     var w = stored('weather');
     // Fetched with another query (an older version): shown, and fetched again now.
@@ -141,8 +159,10 @@ var Data = (function () {
     var now = Date.now();
     if (fetchingWeather || (now - weatherAt < 30 * 60000 && now >= weatherAt)) return;
     fetchingWeather = true;
+    var requestId = ++weatherRequestId;
     var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + Place.lat + '&longitude=' + Place.lon + QUERY;
     get(url, {}, function (err, body) {
+      if (requestId !== weatherRequestId) return;
       fetchingWeather = false;
       if (err) return;
       weather = parseWeather(body);
@@ -527,7 +547,30 @@ var Data = (function () {
 
   return {
     COINS: COINS,
-    city: Place.city,
+    get city() { return Place.city; },
+    setCity: function (city) {
+      if (!Place.choose(city)) return false;
+      Prefs.set('weatherCity', city);
+      PLACE = Place.lat + ',' + Place.lon;
+      weather = null; weatherAt = 0; fetchingWeather = false;
+      store('weather', null);
+      changed(); refreshWeather();
+      return true;
+    },
+    searchCities: function (query, done) {
+      get('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(query) +
+        '&count=5&language=' + encodeURIComponent(I18N.lang || 'en') + '&format=json', {}, function (err, body) {
+        var cities = [];
+        if (err) { done(err, cities); return; }
+        var rows = body && body.results || [];
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i], name = [r.name, r.admin1, r.country].filter(function (v) { return !!v; }).join(' — ');
+          var city = {name: name, lat: r.latitude, lon: r.longitude};
+          if (Place.valid(city)) cities.push(city);
+        }
+        done(null, cities);
+      });
+    },
     currency: CURRENCY,
     onChange: function (fn) { listeners.push(fn); },
     setApps: function (apps) { installed = apps; },
