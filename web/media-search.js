@@ -7,7 +7,8 @@ var MediaSearch = (function () {
   function button(text, parent, action) { var b = node('button', text, parent); b.type = 'button'; b.onclick = action; b.onfocus = function () { current = controls.indexOf(b); }; return b; }
   function focus(at) {
     if (!controls.length) return;
-    current = Math.max(0, Math.min(controls.length - 1, at)); controls[current].focus();
+    current = Math.max(0, Math.min(controls.length - 1, at)); try { controls[current].focus({preventScroll: true}); } catch (e) { controls[current].focus(); }
+    document.getElementById('stage').scrollTop = 0; sheet.scrollTop = 0;
     if (current >= 6 && current < 6 + cards.length) {
       var row = Math.floor((current - 6) / 4); results.scrollTop = Math.max(0, row * 320 - 320);
     }

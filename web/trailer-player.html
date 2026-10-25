@@ -1,12 +1,22 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body,#player{margin:0;width:100%;height:100%;overflow:hidden;background:#000}iframe{border:0}</style></head><body><div id="player"></div><script>
 (function () {
   'use strict';
-  var key = location.hash.slice(1);
+  var key = location.hash.slice(1), video;
   if (!/^[a-zA-Z0-9_-]{6,20}$/.test(key)) return;
   function report(type, code) { parent.postMessage(JSON.stringify({type: type, code: code || 0}), '*'); }
+  window.addEventListener('message', function (event) {
+    if (event.source !== parent || !video) return;
+    var data; try { data = JSON.parse(event.data); } catch (e) { return; }
+    if (data.type !== 'trailer-command') return;
+    if (data.command === 'play') video.playVideo();
+    else if (data.command === 'pause') video.pauseVideo();
+  });
+  document.addEventListener('keydown', function (event) { if (event.keyCode === 461 || event.keyCode === 10009 || event.keyCode === 27 || event.keyCode === 8) { event.preventDefault(); report('trailer-back'); } });
   window.onYouTubeIframeAPIReady = function () {
-    new YT.Player('player', {width: '100%', height: '100%', videoId: key, playerVars: {autoplay: 1, playsinline: 1, rel: 0, origin: location.protocol + '//' + location.host}, events: {
-      onReady: function (e) { report('trailer-ready'); e.target.playVideo(); },
+    video = new YT.Player('player', {width: '100%', height: '100%', videoId: key, playerVars: {autoplay: 1, controls: 0, fs: 0, disablekb: 1, playsinline: 1, rel: 0, origin: location.protocol + '//' + location.host}, events: {
+      onReady: function (e) { e.target.playVideo(); },
+      onStateChange: function (e) { report('trailer-state', e.data); },
+      onAutoplayBlocked: function () { report('trailer-blocked'); },
       onError: function (e) { report('trailer-error', e.data); }
     }});
   };

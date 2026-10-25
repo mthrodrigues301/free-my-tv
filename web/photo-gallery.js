@@ -1,7 +1,7 @@
 /* Inline randomized collage, using Flickr justified-layout and local photos only. */
 var PhotoGallery = (function () {
   'use strict';
-  var sheet, track, controls = [], photos = [], geometry, current = 0, offset = 0, closed, openPhoto, previous = '';
+  var sheet, track, controls = [], photos = [], geometry, current = 0, offset = 0, closed, openPhoto, previous = '', active = false;
   function shuffle(source) {
     var list = source.slice();
     for (var i = list.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), value = list[i]; list[i] = list[j]; list[j] = value; }
@@ -26,7 +26,7 @@ var PhotoGallery = (function () {
     var b = node('button', text, parent); b.type = 'button'; b.onclick = action;
     b.onfocus = function () { current = controls.indexOf(b); }; controls.push(b); return b;
   }
-  function hide() { if (sheet) sheet.className = 'photo-gallery inline'; closed = null; }
+  function hide() { active = false; if (sheet) sheet.className = 'photo-gallery inline'; closed = null; }
   function finish(destination) { if (closed) closed(destination); }
   function paint() {
     sheet.innerHTML = ''; controls = []; offset = 0;
@@ -46,8 +46,8 @@ var PhotoGallery = (function () {
         var img = node('img', '', b); img.src = photos[at].backdrop; img.alt = trf('Photo {n}', {n: at + 1});
       })(i);
     }
-    focus(0);
-    setTimeout(function () { if (closed) focus(0); }, 0);
+    current = 0;
+    if (active) focus(0);
   }
   function move(dx, dy) {
     if (!controls.length) { finish(dy > 0 ? 'shelf' : 'top'); return; }
@@ -71,8 +71,8 @@ var PhotoGallery = (function () {
   function open(source, showPhoto, done, parent) {
     if (!sheet) { sheet = document.createElement('div'); sheet.id = 'photo-gallery'; sheet.setAttribute('role', 'region'); sheet.setAttribute('aria-label', tr('Photos')); sheet.onkeydown = handleKey; }
     (parent || document.getElementById('cards')).appendChild(sheet);
-    closed = done; openPhoto = showPhoto; photos = shuffle(source);
+    active = false; closed = done; openPhoto = showPhoto; photos = shuffle(source);
     sheet.className = 'photo-gallery inline open'; paint();
   }
-  return {reshuffle: function () { if (sheet && sheet.parentNode && photos.length) { photos = shuffle(photos); paint(); } }, focusFirst: function () { focus(0); }, handleKey: handleKey, open: open, hide: hide, shuffle: shuffle};
+  return {reshuffle: function () { if (sheet && sheet.parentNode && photos.length) { photos = shuffle(photos); paint(); } }, focusFirst: function () { active = true; focus(0); }, handleKey: handleKey, open: open, hide: hide, shuffle: shuffle};
 }());

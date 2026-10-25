@@ -16,9 +16,6 @@ var ScreenRest = (function () {
       var now = Date.now(), weather = Data.weather, lines = [];
       time.textContent = formatDate('format|h:mm', now); date.textContent = formatDate('format|EEEE, MMMM d', now);
       if (weather) lines.push((Data.city || '') + '  ' + Data.degrees(weather.temp));
-      var coins = Data.activeCoins();
-      if (coins.length) lines.push(coins.map(function (c) { return ['BTC', 'ETH', 'SOL', 'USD'][c] + ' ' + Data.compact(Data.prices[c]); }).join('  ·  '));
-      if (window.Metrics && Metrics.enabled()) lines.push(Metrics.summary());
       info.textContent = lines.join('\n'); message.textContent = Prefs.saverText();
       width = clock.offsetWidth; height = clock.offsetHeight;
     }

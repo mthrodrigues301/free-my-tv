@@ -1,37 +1,75 @@
 /* Detail data belongs to TMDB; streaming audio/subtitle catalogues are not inferred. */
 var TitleDetails = (function () {
   'use strict';
-  var sheet, content, controls = [], current = 0, generation = 0, closed, player, playerBridge, playerTimeout, playerMessage;
+  var sheet, content, controls = [], current = 0, generation = 0, closed, player, playerBridge, playerTimeout, playerMessage, loading, playerState = -1, fullscreen = false, fullButton, playButton, trailerScreen;
   function node(tag, text, parent, cls) {
     var n = document.createElement(tag); if (text) n.textContent = text;
     if (cls) n.className = cls; if (parent) parent.appendChild(n); return n;
   }
-  function focus(at) { if (!controls.length) return; current = Math.max(0, Math.min(controls.length - 1, at)); controls[current].focus(); }
+  function focus(at) {
+    if (!controls.length) return;
+    current = Math.max(0, Math.min(controls.length - 1, at));
+    var target = controls[current];
+    try { target.focus({preventScroll: true}); } catch (e) { target.focus(); }
+    if (content && content.contains(target)) {
+      var r = target.getBoundingClientRect(), viewport = content.getBoundingClientRect();
+      if (r.top < viewport.top + 12) content.scrollTop -= viewport.top + 12 - r.top;
+      else if (r.bottom > viewport.bottom - 12) content.scrollTop += r.bottom - viewport.bottom + 12;
+    }
+    sheet.scrollTop = 0; document.getElementById('stage').scrollTop = 0;
+  }
+  function setFullscreen(value) {
+    fullscreen = !!value; sheet.className = 'layer title-details open' + (fullscreen ? ' trailer-fullscreen' : '');
+    if (fullButton) fullButton.textContent = fullscreen ? tr('Exit fullscreen') : tr('Fullscreen');
+    if (fullscreen && fullButton) focus(controls.indexOf(fullButton));
+  }
+  function sendPlayer(command) { if (player) player.contentWindow.postMessage(JSON.stringify({type: 'trailer-command', command: command}), '*'); }
+  function showLoading(value) { if (loading) loading.style.display = value ? '' : 'none'; }
+  function directional(dx, dy) {
+    var from = controls[current].getBoundingClientRect(), x = (from.left + from.right) / 2, y = (from.top + from.bottom) / 2, best = -1, score = Infinity;
+    for (var i = 0; i < controls.length; i++) {
+      if (i === current || (fullscreen && !controls[i].parentNode.classList.contains('trailer-actions'))) continue;
+      var r = controls[i].getBoundingClientRect(), vx = (r.left + r.right) / 2 - x, vy = (r.top + r.bottom) / 2 - y;
+      if (dx ? vx * dx < 20 : vy * dy < 20) continue;
+      var distance = dx ? Math.abs(vx) + Math.abs(vy) * 2 : Math.abs(vy) + Math.abs(vx) * .65;
+      if (distance < score) { score = distance; best = i; }
+    }
+    if (best >= 0) focus(best); else if (dy && content && !fullscreen) content.scrollTop += dy * 180;
+  }
   function button(text, parent, action) {
-    var b = node('button', text, parent); b.type = 'button'; b.onclick = action;
+    var b = node('button', text, parent); b.type = 'button'; b.onclick = function () { action(); if (closed) focus(current); };
     b.onfocus = function () { current = controls.indexOf(b); }; controls.push(b); return b;
   }
   function stopPlayer() {
-    clearTimeout(playerTimeout);
+    clearTimeout(playerTimeout); showLoading(false); playerState = -1;
+    if (playButton) playButton.textContent = tr('Play trailer here');
     if (playerMessage) window.removeEventListener('message', playerMessage); playerMessage = null;
     try { if (playerBridge) playerBridge.cancel(); } catch (e) {} playerBridge = null;
     if (player && player.parentNode) player.parentNode.removeChild(player); player = null;
   }
   function startPlayer(screen, video, status) {
-    stopPlayer(); var stamp = generation;
+    stopPlayer(); showLoading(true); var stamp = generation;
     function error(code) { stopPlayer(); status.textContent = tr('Embedded playback unavailable. Open the trailer in YouTube.') + (code ? ' (' + code + ')' : ''); }
     function mount(url) {
       if (stamp !== generation || !closed) return;
-      player = node('iframe', '', screen); player.title = tr('Trailer'); player.setAttribute('allow', 'autoplay; encrypted-media; fullscreen'); player.setAttribute('allowfullscreen', ''); player.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); player.tabIndex = -1;
+      player = node('iframe', '', screen); player.title = tr('Trailer'); player.setAttribute('allow', 'autoplay; encrypted-media; fullscreen'); player.style.pointerEvents = 'none'; player.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); player.tabIndex = -1;
       playerMessage = function (event) {
         if (!player || event.source !== player.contentWindow) return;
         var data; try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
         if (!data) return;
-        if (data.type === 'trailer-ready') { clearTimeout(playerTimeout); status.textContent = ''; }
+        if (data.type === 'trailer-state') {
+          playerState = data.code;
+          if (playerState === 1) { clearTimeout(playerTimeout); showLoading(false); status.textContent = ''; }
+          else if (playerState === 3) showLoading(true);
+          else if (playerState === 2 || playerState === 0) showLoading(false);
+          if (playButton) playButton.textContent = playerState === 1 || playerState === 3 ? tr('Pause trailer') : tr('Play trailer here');
+        }
+        else if (data.type === 'trailer-blocked') { clearTimeout(playerTimeout); showLoading(false); status.textContent = tr('Press Play to start the trailer.'); }
+        else if (data.type === 'trailer-back') { if (fullscreen) setFullscreen(false); else stopPlayer(); }
         else if (data.type === 'trailer-error') error(data.code);
       };
       window.addEventListener('message', playerMessage);
-      playerTimeout = setTimeout(function () { error(0); }, 25000);
+      playerTimeout = setTimeout(function () { error(0); }, 45000);
       player.src = url + '#' + video.key;
     }
     status.textContent = tr('Loading trailer…');
@@ -49,7 +87,7 @@ var TitleDetails = (function () {
     else error(0);
   }
   function hide() {
-    generation++; closed = null;
+    generation++; closed = null; fullscreen = false;
     stopPlayer();
     if (sheet) { sheet.className = 'layer title-details'; if (document.activeElement) document.activeElement.blur(); }
   }
@@ -60,7 +98,7 @@ var TitleDetails = (function () {
     return valid[0] || null;
   }
   function paint(p, data, error) {
-    var focusAt = current; controls = []; sheet.innerHTML = '';
+    var focusAt = current; stopPlayer(); controls = []; playButton = fullButton = loading = null; sheet.innerHTML = '';
     var hero = node('div', '', sheet, 'detail-backdrop'); hero.style.backgroundImage = 'url(' + Data.image(data.backdrop_path || p.backdrop, 'w1280') + ')';
     var heading = node('div', '', sheet, 'detail-heading');
     node('h1', data.title || data.name || p.title, heading);
@@ -75,10 +113,9 @@ var TitleDetails = (function () {
       TV.launch(app.id, null, function (ok) { if (!ok) status.textContent = tr('Could not open the streaming app.'); });
     });
     button(tr('Back'), actions, finish);
+    button(tr('More information'), actions, function () { content.scrollTop += 380; });
     var status = node('div', error === 'loading' ? tr('Loading details…') : error ? tr('Could not load all details. Check your connection.') : '', heading, 'detail-status');
     content = node('div', '', sheet, 'detail-content');
-    node('h2', tr('Synopsis'), content);
-    node('p', data.overview || (error === 'loading' ? tr('Loading details…') : tr('No synopsis available.')), content);
     var cast = data.credits && data.credits.cast || [];
     node('h2', tr('Where to watch'), content);
     var availability = data.availability || [], labels = {flatrate: tr('Subscription'), free: tr('Free'), ads: tr('With ads'), rent: tr('Rent'), buy: tr('Buy')};
@@ -92,6 +129,8 @@ var TitleDetails = (function () {
       })(availability[v]);
     }
     node('p', 'TMDB / JustWatch' + (data.availabilityRegion ? ' · ' + data.availabilityRegion : ''), content, 'detail-note');
+    node('h2', tr('Synopsis'), content);
+    node('p', data.overview || (error === 'loading' ? tr('Loading details…') : tr('No synopsis available.')), content);
     node('h2', tr('Cast'), content);
     var castRow = node('div', '', content, 'detail-cast');
     for (var i = 0; i < cast.length && i < 18; i++) {
@@ -111,27 +150,30 @@ var TitleDetails = (function () {
     var video = trailer(data.videos && data.videos.results), preview = node('div', '', sheet, 'detail-trailer');
     node('h2', tr('Trailer'), preview);
     if (video) {
-      var screen = node('div', '', preview, 'trailer-screen');
+      var screen = node('div', '', preview, 'trailer-screen'); trailerScreen = screen;
       screen.style.backgroundImage = 'url(https://i.ytimg.com/vi/' + video.key + '/hqdefault.jpg)';
-      button(tr('Play trailer here'), preview, function () {
-        if (player) { stopPlayer(); return; }
+      var trailerActions = node('div', '', preview, 'trailer-actions');
+      playButton = button(tr('Play trailer here'), trailerActions, function () {
+        if (player) { sendPlayer(playerState === 1 || playerState === 3 ? 'pause' : 'play'); return; }
         startPlayer(screen, video, status);
-        controls[current].focus();
+        focus(current);
       });
-      button(tr('Open in YouTube'), preview, function () { TV.launch('youtube.leanback.v4', {contentTarget: 'https://www.youtube.com/watch?v=' + video.key}, function (ok) { if (!ok) status.textContent = tr('Could not open YouTube.'); }); });
+      fullButton = button(tr('Fullscreen'), trailerActions, function () { if (!player) startPlayer(screen, video, status); setFullscreen(!fullscreen); });
+      button(tr('Open in YouTube'), trailerActions, function () { TV.launch('youtube.leanback.v4', {contentTarget: 'https://www.youtube.com/watch?v=' + video.key}, function (ok) { if (!ok) status.textContent = tr('Could not open YouTube.'); }); });
+      loading = node('div', '', screen, 'trailer-loading'); loading.setAttribute('role', 'status'); node('span', '', loading, 'loading-spinner'); node('div', tr('Loading trailer…'), loading); showLoading(false);
       node('p', tr('If embedded playback is unavailable, open it in YouTube.'), preview, 'detail-note');
     } else node('p', error === 'loading' ? tr('Loading details…') : tr('No trailer available.'), preview);
-    node('div', tr('Up/Down scrolls details. Left/Right selects actions. Back closes.'), sheet, 'detail-hint');
+    node('div', tr('Arrows select actions. Back exits fullscreen or returns. More information scrolls the details.'), sheet, 'detail-hint');
     focus(focusAt);
     setTimeout(function () { if (closed) focus(focusAt); }, 0);
   }
   function handleKey(e) {
-        var k = e.keyCode; e.stopPropagation();
-        if (k === TV.keys.back || k === 27 || k === 8) { e.preventDefault(); finish(); }
-        else if (k === TV.keys.up || k === TV.keys.down) { e.preventDefault(); content.scrollTop += k === TV.keys.down ? 150 : -150; }
-        else if (k === TV.keys.left || k === TV.keys.right) { e.preventDefault(); focus(current + (k === TV.keys.right ? 1 : -1)); }
-        else if (k === TV.keys.ok) { e.preventDefault(); if (controls[current]) controls[current].click(); }
-      }
+    var k = e.keyCode; e.stopPropagation();
+    if (k === TV.keys.back || k === 27 || k === 8) { e.preventDefault(); if (fullscreen) { setFullscreen(false); if (fullButton) focus(controls.indexOf(fullButton)); } else finish(); }
+    else if (k === TV.keys.up || k === TV.keys.down) { e.preventDefault(); directional(0, k === TV.keys.down ? 1 : -1); }
+    else if (k === TV.keys.left || k === TV.keys.right) { e.preventDefault(); directional(k === TV.keys.right ? 1 : -1, 0); }
+    else if (k === TV.keys.ok) { e.preventDefault(); if (controls[current]) controls[current].click(); }
+  }
   function open(p, done) {
     if (!sheet) {
       sheet = node('div', '', document.getElementById('stage'), 'layer title-details'); sheet.id = 'title-details';

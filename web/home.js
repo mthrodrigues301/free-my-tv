@@ -961,10 +961,24 @@
       setClass($('settings'), 'open', false); st.zone = Z.TEXT;
       TextSetting.open(tr('Custom message'), Prefs.saverText(), function (value) { Prefs.set('saverText', value); }, openSettings);
     }});
+    rows.push({label: tr('Start photo slideshow'), value: '›', step: function () { Prefs.set('saverMode', 'photos'); closeSheets(); showSaver(); }});
+    rows.push({label: tr('Open Spotify'), value: '›', step: function () { openMusic('spotify'); }});
+    rows.push({label: tr('Open YouTube Music'), value: '›', step: function () { openMusic('youtube'); }});
     var groups = [tr('Appearance'), tr('Weather'), tr('Widgets'), tr('Content'), tr('Photos'), tr('Screensaver'), tr('Apps and system')];
-    var membership = [[tr('Language'), tr('Theme'), tr('Glass transparency')], [tr('Temperature'), tr('Weather widget'), tr('Weather city'), tr('Forecast')], [tr('Quotes widget'), 'Bitcoin', 'Ethereum', 'Solana', tr('Dollar'), tr('Widget order'), tr('Performance panel')], [tr('TMDB recommendations'), tr('Search titles')], [tr('New composition')], [tr('Screensaver style'), tr('Custom message'), tr('Preview screensaver')], [tr('Shelf'), tr('TV Settings')]];
+    var membership = [[tr('Language'), tr('Theme'), tr('Glass transparency')], [tr('Temperature'), tr('Weather widget'), tr('Weather city'), tr('Forecast')], [tr('Quotes widget'), 'Bitcoin', 'Ethereum', 'Solana', tr('Dollar'), tr('Widget order'), tr('Performance panel')], [tr('TMDB recommendations'), tr('Search titles')], [tr('New composition'), tr('Start photo slideshow'), tr('Open Spotify'), tr('Open YouTube Music')], [tr('Screensaver style'), tr('Custom message'), tr('Preview screensaver'), tr('Open Spotify'), tr('Open YouTube Music')], [tr('Shelf'), tr('TV Settings')]];
     if (settingsPage) return rows.filter(function (r) { return membership[groups.indexOf(settingsPage)].indexOf(r.label) >= 0; });
     return groups.map(function (name) { return {label: name, value: '›', step: function () { settingsPage = name; st.row = 0; }}; });
+  }
+
+  function openMusic(provider) {
+    var found = null;
+    for (var i = 0; i < apps.length; i++) {
+      var name = (apps[i].id + ' ' + apps[i].title).toLowerCase();
+      if (provider === 'spotify' ? /spotify/.test(name) : /youtube.*music|music.*youtube/.test(name)) { found = apps[i]; break; }
+    }
+    if (!found && provider === 'youtube') for (var j = 0; j < apps.length; j++) if (/youtube/i.test(apps[j].id + ' ' + apps[j].title)) { found = apps[j]; break; }
+    if (found) TV.launch(found.id, provider === 'youtube' ? {contentTarget: 'https://music.youtube.com/'} : null, function (ok) { if (!ok) toast(tr('Could not open the music app.')); });
+    else toast(tr('Music app not installed.'));
   }
 
   function openRecommendations() {
@@ -1016,7 +1030,7 @@
       }
       hover(row, Z.SETTINGS, i);
     }
-    el('div', 'hint', box, tr('OK or the arrows change the value.'));
+    el('div', 'hint', box, settingsPage === tr('Photos') || settingsPage === tr('Screensaver') ? tr('Start music in its app, then return to photos. Background audio depends on the TV and service.') : tr('OK or the arrows change the value.'));
     updateFocus();
   }
 
@@ -1163,7 +1177,6 @@
   }
 
   function openPhotos() {
-    st.zone = Z.PHOTOS; updateFocus();
     PhotoGallery.open(window.LOCAL_PHOTOS || [], function (at, photos, resume) {
       st.zone = Z.PHOTOS;
       showPhoto(at, photos, resume);
@@ -1381,7 +1394,7 @@
 
   function showSaver() {
     hideSaver();
-    saverOn = true; Metrics.setVisible(Metrics.enabled());
+    saverOn = true; Metrics.setVisible(false);
     ScreenRest.start($('saver'), saverPhotos());
     setClass($('saver'), 'on', true);
   }
