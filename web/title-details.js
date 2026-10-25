@@ -1,7 +1,7 @@
 /* Detail data belongs to TMDB; streaming audio/subtitle catalogues are not inferred. */
 var TitleDetails = (function () {
   'use strict';
-  var sheet, content, controls = [], current = 0, generation = 0, closed, player;
+  var sheet, content, controls = [], current = 0, generation = 0, closed, player, playerBridge, playerTimeout, playerMessage;
   function node(tag, text, parent, cls) {
     var n = document.createElement(tag); if (text) n.textContent = text;
     if (cls) n.className = cls; if (parent) parent.appendChild(n); return n;
@@ -11,9 +11,46 @@ var TitleDetails = (function () {
     var b = node('button', text, parent); b.type = 'button'; b.onclick = action;
     b.onfocus = function () { current = controls.indexOf(b); }; controls.push(b); return b;
   }
+  function stopPlayer() {
+    clearTimeout(playerTimeout);
+    if (playerMessage) window.removeEventListener('message', playerMessage); playerMessage = null;
+    try { if (playerBridge) playerBridge.cancel(); } catch (e) {} playerBridge = null;
+    if (player && player.parentNode) player.parentNode.removeChild(player); player = null;
+  }
+  function startPlayer(screen, video, status) {
+    stopPlayer(); var stamp = generation;
+    function error(code) { stopPlayer(); status.textContent = tr('Embedded playback unavailable. Open the trailer in YouTube.') + (code ? ' (' + code + ')' : ''); }
+    function mount(url) {
+      if (stamp !== generation || !closed) return;
+      player = node('iframe', '', screen); player.title = tr('Trailer'); player.setAttribute('allow', 'autoplay; encrypted-media; fullscreen'); player.setAttribute('allowfullscreen', ''); player.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin'); player.tabIndex = -1;
+      playerMessage = function (event) {
+        if (!player || event.source !== player.contentWindow) return;
+        var data; try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
+        if (!data) return;
+        if (data.type === 'trailer-ready') { clearTimeout(playerTimeout); status.textContent = ''; }
+        else if (data.type === 'trailer-error') error(data.code);
+      };
+      window.addEventListener('message', playerMessage);
+      playerTimeout = setTimeout(function () { error(0); }, 25000);
+      player.src = url + '#' + video.key;
+    }
+    status.textContent = tr('Loading trailer…');
+    if (TV.name === 'webos' && window.PalmServiceBridge) {
+      playerBridge = new window.PalmServiceBridge();
+      playerTimeout = setTimeout(function () { error(0); }, 8000);
+      playerBridge.onservicecallback = function (raw) {
+        if (stamp !== generation || !closed) return;
+        clearTimeout(playerTimeout); var result;
+        try { result = JSON.parse(raw); } catch (e) {}
+        if (result && result.returnValue && /^http:\/\/127\.0\.0\.1:\d+\/player$/.test(result.url)) mount(result.url); else error(0);
+      };
+      try { playerBridge.call('luna://io.freemytv.metrics/trailerPlayer', '{}'); } catch (e) { error(0); }
+    } else if (/^https?:$/.test(location.protocol)) mount('trailer-player.html');
+    else error(0);
+  }
   function hide() {
     generation++; closed = null;
-    if (player && player.parentNode) player.parentNode.removeChild(player); player = null;
+    stopPlayer();
     if (sheet) { sheet.className = 'layer title-details'; if (document.activeElement) document.activeElement.blur(); }
   }
   function finish() { var callback = closed; hide(); if (callback) callback(); }
@@ -77,10 +114,8 @@ var TitleDetails = (function () {
       var screen = node('div', '', preview, 'trailer-screen');
       screen.style.backgroundImage = 'url(https://i.ytimg.com/vi/' + video.key + '/hqdefault.jpg)';
       button(tr('Play trailer here'), preview, function () {
-        if (player && player.parentNode) { player.parentNode.removeChild(player); player = null; return; }
-        player = node('iframe', '', screen); player.title = tr('Trailer'); player.setAttribute('allow', 'autoplay; encrypted-media; fullscreen');
-        player.setAttribute('allowfullscreen', ''); player.tabIndex = -1;
-        player.src = 'https://www.youtube-nocookie.com/embed/' + video.key + '?autoplay=1&rel=0';
+        if (player) { stopPlayer(); return; }
+        startPlayer(screen, video, status);
         controls[current].focus();
       });
       button(tr('Open in YouTube'), preview, function () { TV.launch('youtube.leanback.v4', {contentTarget: 'https://www.youtube.com/watch?v=' + video.key}, function (ok) { if (!ok) status.textContent = tr('Could not open YouTube.'); }); });
