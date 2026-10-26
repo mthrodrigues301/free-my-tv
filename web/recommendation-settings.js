@@ -11,7 +11,7 @@ var RecommendationSettings = (function () {
   function focus(at) {
     if (!controls.length) return;
     index = Math.max(0, Math.min(controls.length - 1, at));
-    controls[index].focus();
+    SettingsUI.focus(controls[index]);
     var b = controls[index];
     if (b.offsetTop < list.scrollTop) list.scrollTop = b.offsetTop;
     else if (b.offsetTop + b.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = b.offsetTop + b.offsetHeight - list.clientHeight;
@@ -47,6 +47,7 @@ var RecommendationSettings = (function () {
     status = node('div', '', box); status.className = 'rec-status'; status.setAttribute('role', 'status');
     list = node('div', '', box); list.className = 'rec-options';
     node('div', tr('Use arrows and OK. Apply saves all filters.'), box).className = 'hint';
+    SettingsUI.decorate(sheet, function () { if (page) main(); else finish(false); });
   }
   function count(ids) { return ids.length ? String(ids.length) : tr('All genres'); }
   function main(at) {

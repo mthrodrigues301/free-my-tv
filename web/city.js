@@ -10,8 +10,7 @@ var CityPicker = (function () {
   }
   function focus(at) {
     index = Math.max(0, Math.min(controls.length - 1, at));
-    controls[index].focus();
-    if (controls[index].scrollIntoViewIfNeeded) controls[index].scrollIntoViewIfNeeded(false);
+    SettingsUI.focus(controls[index]);
   }
   function button(text, parent, action) {
     var b = node('button', text, parent); b.type = 'button'; b.onclick = action;
@@ -19,7 +18,7 @@ var CityPicker = (function () {
     return b;
   }
   function listControls() {
-    controls = [input].concat(Array.prototype.slice.call(box.querySelectorAll('button')));
+    controls = [input].concat(Array.prototype.slice.call(box.querySelectorAll('button:not([data-settings-back])')));
   }
   function search() {
     var query = input.value.replace(/^\s+|\s+$/g, '');
@@ -77,6 +76,7 @@ var CityPicker = (function () {
     button(tr('Use default city'), box, function () { Data.setCity(null); finish(); });
     button(tr('Cancel'), box, finish);
     node('div', 'Open-Meteo / GeoNames', box).className = 'hint';
+    SettingsUI.decorate(sheet, finish);
     listControls(); focus(0);
   }
   return {open: open, hide: hide};

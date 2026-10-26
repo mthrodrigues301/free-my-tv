@@ -53,7 +53,7 @@ var WidgetPicker = (function () {
     var n = document.createElement(tag); n.className = cls;
     n.textContent = text; parent.appendChild(n); return n;
   }
-  function focus(at) { current = Math.max(0, Math.min(buttons.length - 1, at)); buttons[current].focus(); }
+  function focus(at) { current = Math.max(0, Math.min(buttons.length - 1, at)); SettingsUI.focus(buttons[current]); }
   function hide() {
     if (sheet) { sheet.className = 'layer sheet'; if (document.activeElement) document.activeElement.blur(); }
     done = null;
@@ -88,7 +88,7 @@ var WidgetPicker = (function () {
     var cancel = node('button', 'widget-picker-cancel', tr('Cancel'), box);
     cancel.type = 'button'; cancel.onclick = finish;
     cancel.onfocus = function () { current = buttons.indexOf(cancel); };
-    buttons.push(cancel); focus(0);
+    buttons.push(cancel); SettingsUI.decorate(sheet, finish); focus(0);
   }
   return {open: open, hide: hide};
 }());
@@ -103,7 +103,7 @@ var WidgetOrganizer = (function () {
   function focus(at) {
     current = Math.max(0, Math.min(buttons.length - 1, at));
     while (buttons[current].disabled && current < buttons.length - 1) current++;
-    buttons[current].focus();
+    SettingsUI.focus(buttons[current]);
   }
   function hide() {
     if (sheet) { sheet.className = 'layer sheet'; if (document.activeElement) document.activeElement.blur(); }
@@ -159,6 +159,7 @@ var WidgetOrganizer = (function () {
     apply.onfocus = function () { current = draft.length + 1; }; buttons.push(apply);
     var cancel = node('button', tr('Cancel'), box); cancel.type = 'button'; cancel.onclick = function () { finish(false); };
     cancel.onfocus = function () { current = draft.length + 2; }; buttons.push(cancel);
+    SettingsUI.decorate(sheet, function () { finish(false); });
     focus(at || 0);
     setTimeout(function () { if (closed) focus(at || 0); }, 0);
   }
