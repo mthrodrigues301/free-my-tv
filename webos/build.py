@@ -78,7 +78,7 @@ def build(preview, config):
     service_id = app_id + '.metrics'
     service_base = 'usr/palm/services/' + service_id
     entries += [('usr/palm/services', None), (service_base, None)]
-    for name in ('package.json', 'services.json', 'service.js', 'trailer-player.html'):
+    for name in ('package.json', 'services.json', 'service.js', 'spotify.js', 'trailer-player.html'):
         with open(os.path.join(ROOT, 'webos', 'metrics-service', name), 'rb') as f:
             entries.append((service_base + '/' + name, f.read()))
     package = json.dumps({'id': app_id, 'version': version, 'app': app_id,

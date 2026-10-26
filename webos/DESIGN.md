@@ -19,3 +19,11 @@ The music source picker lives inside the content region below the main tabs. You
 Spotify playback and track search are a local preview prototype. The local helper `tools/spotify_local.py` reads `SPOTIFY_ACCESS_TOKEN` from the process environment, binds only to loopback and permits the preview origin. It is not a Spotify authorization solution for packaged TVs.
 
 Visible tabs retain stable IDs independent of their displayed positions. Persist the selection and keep at least one tab enabled. Voice search uses browser speech recognition when available. On webOS, focus the native input so the TV keyboard can provide dictation; remote microphone behavior requires validation on the actual device.
+
+## Spotify session authorization (1.9.0)
+
+The webOS service implements Authorization Code with PKCE using a public Client ID. It binds the callback to 127.0.0.1:8787, checks state, exchanges codes over HTTPS, and retains access/refresh tokens only in memory. The public status method never returns credentials; token and playback methods require the Free My TV caller identity. A temporary Activity Manager activity keeps the login service alive; inactive sessions are cleared. No token persistence or Client Secret is used.
+
+The app uses the service for Spotify search and token renewal. SDK initialization must be checked on the actual TV: authorization success alone is not proof of DRM playback compatibility. Launching with `{openMusic:true}` opens the music tab and connects an existing session. The notebook callback can be tunneled to the TV for development, without exposing a LAN listener.
+
+Search fields accept native search/change/submit confirmations as well as Enter. The microphone is a monochrome inline SVG matching the search icon stroke, with its accessible label on the button.
