@@ -2,6 +2,7 @@
 var MediaSearch = (function () {
   'use strict';
   var sheet, input, status, results, pager, controls = [], current = 0, generation = 0, timer = 0, recognition = null, voiceButton;
+  var lastSubmit = '', lastSubmitAt = 0;
   var query = '', kind = 'all', page = 1, pages = 0, items = [], closed, detail, suspended = false, cards = [];
   function node(tag, text, parent, cls) { var n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; if (parent) parent.appendChild(n); return n; }
   function button(text, parent, action) { var b = node('button', text, parent); b.type = 'button'; b.onclick = action; b.onfocus = function () { current = controls.indexOf(b); }; return b; }
@@ -53,7 +54,10 @@ var MediaSearch = (function () {
   }
   function run(wanted, takeFocus) {
     query = input.value.replace(/^\s+|\s+$/g, '').slice(0, 150); page = wanted || 1;
-    clearTimeout(timer); var request = ++generation;
+    clearTimeout(timer);
+    var signature = query + '|' + kind + '|' + page;
+    if (signature === lastSubmit && Date.now() - lastSubmitAt < 350) return;
+    lastSubmit = signature; lastSubmitAt = Date.now(); var request = ++generation;
     if (!query) { items = []; pages = 0; status.textContent = tr('Type a movie or series title to begin.'); render(false); return; }
     status.textContent = tr('Searching titles…'); render(true);
     Data.searchTitles(query, kind, page, function (err, list, total) {
@@ -109,10 +113,20 @@ var MediaSearch = (function () {
     button(tr('Back'), sidebar, finish);
     node('h1', tr('Search titles'), sidebar); node('p', tr('Find a film, a series or your next favorite.'), sidebar);
     input = node('input', '', sidebar); input.type = 'text'; input.maxLength = 150; input.value = query; input.placeholder = tr('Movie or series name'); input.setAttribute('aria-label', tr('Movie or series name'));
+    var searchForm = node('form', '', sidebar); searchForm.id = 'title-search-form';
+    searchForm.onsubmit = function (event) { event.preventDefault(); run(1, true); };
+    input.type = 'search'; input.setAttribute('form', searchForm.id); input.setAttribute('enterkeyhint', 'search');
+    input.onsearch = function () { run(1, true); };
+    input.onchange = function () { run(1, false); };
+    input.onkeyup = function (event) { if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); run(1, true); } };
     input.onfocus = function () { current = 1; };
     input.oninput = function () { generation++; clearTimeout(timer); timer = setTimeout(function () { run(1, false); }, 450); };
     button(tr('Search titles'), sidebar, function () { run(1, true); });
-    voiceButton = button('🎙', sidebar, voiceSearch); voiceButton.className = 'search-voice'; voiceButton.setAttribute('aria-label', tr('Search by voice')); voiceButton.setAttribute('aria-pressed', 'false');
+    voiceButton = button('', sidebar, voiceSearch);
+    var svgNS = 'http://www.w3.org/2000/svg', microphone = document.createElementNS(svgNS, 'svg');
+    microphone.setAttribute('viewBox', '0 0 32 32'); microphone.setAttribute('width', '32'); microphone.setAttribute('height', '32'); microphone.setAttribute('aria-hidden', 'true');
+    var micPath = document.createElementNS(svgNS, 'path'); micPath.setAttribute('d', 'M12 7a4 4 0 0 1 8 0v9a4 4 0 0 1-8 0V7zm-5 8v1a9 9 0 0 0 18 0v-1M16 25v5m-5 0h10');
+    micPath.setAttribute('fill', 'none'); micPath.setAttribute('stroke', 'currentColor'); micPath.setAttribute('stroke-width', '2.5'); micPath.setAttribute('stroke-linecap', 'round'); micPath.setAttribute('stroke-linejoin', 'round'); microphone.appendChild(micPath); voiceButton.appendChild(microphone); voiceButton.className = 'search-voice'; voiceButton.setAttribute('aria-label', tr('Search by voice')); voiceButton.setAttribute('aria-pressed', 'false');
     var chips = node('div', '', sidebar, 'search-types');
     [['all', tr('All')], ['movie', tr('Movies')], ['tv', tr('Shows')]].forEach(function (choice) {
       var b = button(choice[1], chips, function () {

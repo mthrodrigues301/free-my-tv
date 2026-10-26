@@ -1514,11 +1514,18 @@
     checkNight();
   });
 
+  function openMusicFromLaunch() {
+    var params;
+    try { params = JSON.parse(window.PalmSystem && window.PalmSystem.launchParams || '{}'); } catch (e) { return; }
+    if (params.openMusic !== true || visibleTabs.indexOf(6) < 0) return;
+    selectTab(6); st.zone = Z.TOP; st.top = tabPosition(6); updateFocus(); Music.connect();
+  }
+
   function reopened() {
     // LG: with handlesRelaunch the app has to come to the front itself, or opening it again while it runs shows nothing.
     if (window.PalmSystem && window.PalmSystem.activate) window.PalmSystem.activate();
     reset();
-    loadApps(function () { renderShelf(); renderDrawer(); Data.refresh(); });
+    loadApps(function () { renderShelf(); renderDrawer(); Data.refresh(); openMusicFromLaunch(); });
   }
 
   window.addEventListener('resize', fit);
@@ -1540,7 +1547,7 @@
   tickClock();
   loadApps(function () {
     renderAll();
-    Data.refresh();
+    Data.refresh(); openMusicFromLaunch();
   });
   setInterval(function () {
     checkNight();

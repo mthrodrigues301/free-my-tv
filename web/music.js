@@ -1,13 +1,39 @@
-/* Local-only Spotify SDK prototype. Tokens live only in the bridge process and SDK memory. */
+/* Spotify credentials live only in the authorization service and player memory. */
 var Music = (function () {
   'use strict';
   var root, player, ready = false, connecting = false, active = false, controls = [], current = 0;
   var status, title, artist, cover, play, close, sdkLoaded = false, message = '', track = null, paused = true, enter, source = 'spotify', youtube, youtubeInput, youtubeState = -1, youtubeBridge, youtubeGeneration = 0, youtubeShell, youtubeResults, youtubeQuery = '', youtubeItems = [], youtubeKey = '', searchRequest, searchGeneration = 0, keyInput, spotifyDevice = '', spotifyInput, spotifyResults, spotifyQuery = '', spotifyItems = [], spotifySearchRequest, spotifySearchGeneration = 0;
   function node(tag, cls, text, parent) { var n = document.createElement(tag); n.className = cls; if (text) n.textContent = text; parent.appendChild(n); return n; }
   function local() { return /^https?:$/.test(location.protocol) && location.hostname === '127.0.0.1' && location.port === '8770'; }
+  function onTV() { return TV.name === 'webos' && !!window.PalmServiceBridge; }
+  function lunaSpotify(method, payload, done) {
+    var bridge = new window.PalmServiceBridge(), finished = false;
+    var timer = setTimeout(function () { if (finished) return; finished = true; try { bridge.cancel(); } catch (e) {} done({returnValue: false, status: 504}); }, 20000);
+    bridge.onservicecallback = function (raw) { if (finished) return; finished = true; clearTimeout(timer); var data; try { data = JSON.parse(raw); } catch (e) {} done(data || {returnValue: false, status: 502}); };
+    try { bridge.call('luna://io.freemytv.metrics/' + method, JSON.stringify(payload || {})); } catch (e) { clearTimeout(timer); if (!finished) { finished = true; done({returnValue: false, status: 502}); } }
+    return {abort: function () { finished = true; clearTimeout(timer); try { bridge.cancel(); } catch (e) {} }};
+  }
+  function reportSpotify(status) { if (onTV()) lunaSpotify('spotifyReport', {status: status}, function () {}); }
+  var authorizationTimer = 0, authorizationDeadline = 0, sessionKeepalive = 0;
+  function keepSession() { if (!onTV() || sessionKeepalive) return; sessionKeepalive = setInterval(function () { lunaSpotify('spotifyStatus', {}, function () {}); }, 15000); }
+  function waitAuthorization() {
+    if (Date.now() > authorizationDeadline) { connecting = false; say(tr('Spotify authorization expired. Connect again.')); return; }
+    lunaSpotify('spotifyStatus', {}, function (result) {
+      if (!connecting) return;
+      if (result.connected) { connecting = false; loadSpotify(); }
+      else authorizationTimer = setTimeout(waitAuthorization, 3000);
+    });
+  }
   function say(text) { message = text; if (status) status.textContent = text; }
   function focus(at) { if (!controls.length) return; current = Math.max(0, Math.min(controls.length - 1, at)); SettingsUI.focus(controls[current]); }
   function button(text, parent, action) { var b = node('button', '', text, parent); b.type = 'button'; b.onclick = function () { action(); }; b.onfocus = function () { current = controls.indexOf(b); active = true; if (enter) enter(); }; controls.push(b); return b; }
+  function keyboardSearch(field, submit) {
+    field.setAttribute('enterkeyhint', 'search');
+    var previous = '', at = 0;
+    function confirm(event) { if (event) event.preventDefault(); var value = field.value; if (previous === value && Date.now() - at < 350) return; previous = value; at = Date.now(); submit(); }
+    field.onsearch = confirm; field.onchange = confirm;
+    field.onkeyup = function (event) { if (event.key === 'Enter' || event.keyCode === 13) confirm(event); };
+  }
   function state(value) {
     if (!value) return;
     track = value.track_window && value.track_window.current_track; paused = value.paused;
@@ -24,6 +50,7 @@ var Music = (function () {
     player[name]().then(function () {}, function () { say(tr('Could not control playback. Select this player in Spotify.')); });
   }
   function token(callback) {
+    if (onTV()) { lunaSpotify('spotifyToken', {}, function (result) { if (result.returnValue && result.access_token) callback(result.access_token); else { connecting = false; reportSpotify('authorization_required'); say(tr('Connect your Spotify account again.')); } }); return; }
     var request = new XMLHttpRequest();
     request.open('GET', 'http://127.0.0.1:8788/token', true); request.timeout = 10000;
     request.setRequestHeader('X-FreeMyTV-Local', '1');
@@ -37,18 +64,32 @@ var Music = (function () {
   }
   function createPlayer() {
     if (!window.Spotify || player) return;
-    player = new Spotify.Player({name: 'Free My TV Local', getOAuthToken: token, volume: .5});
-    player.addListener('ready', function (device) { spotifyDevice = device.device_id; ready = true; connecting = false; say(tr('Connected. In Spotify, choose Free My TV Local as the playback device.')); });
+    player = new Spotify.Player({name: onTV() ? 'Free My TV LG' : 'Free My TV Local', getOAuthToken: token, volume: .5});
+    player.addListener('ready', function (device) { spotifyDevice = device.device_id; keepSession(); reportSpotify('ready'); ready = true; connecting = false; say(tr('Spotify connected. Choose a song or select this player in Spotify.')); });
     player.addListener('not_ready', function () { ready = false; connecting = false; say(tr('Player offline. Reconnect Spotify.')); });
     player.addListener('player_state_changed', state);
-    player.addListener('initialization_error', function () { connecting = false; say(tr('This browser cannot initialize Spotify playback.')); });
-    player.addListener('authentication_error', function () { connecting = false; ready = false; say(tr('Spotify rejected the token or its permissions. Renew the environment variable.')); });
-    player.addListener('account_error', function () { connecting = false; ready = false; say(tr('Spotify Premium is required for this player.')); });
+    player.addListener('initialization_error', function () { reportSpotify('initialization_error'); connecting = false; say(tr('This browser cannot initialize Spotify playback.')); });
+    player.addListener('authentication_error', function () { reportSpotify('authentication_error'); connecting = false; ready = false; say(onTV() ? tr('Connect your Spotify account again.') : tr('Spotify rejected the token or its permissions. Renew the environment variable.')); });
+    player.addListener('account_error', function () { reportSpotify('account_error'); connecting = false; ready = false; say(tr('Spotify Premium is required for this player.')); });
     player.addListener('autoplay_failed', function () { say(tr('Press Play to allow audio in this browser.')); });
     player.connect().then(function (ok) { if (!ok) { connecting = false; say(tr('Could not connect Spotify. Check the token and connection.')); } }, function () { connecting = false; say(tr('Could not connect Spotify. Check the token and connection.')); });
   }
   function connect() {
-    if (!local()) { say(tr('Spotify integration is currently available only in the local preview.')); return; }
+    if (onTV()) {
+      if (ready || connecting) return; connecting = true;
+      lunaSpotify('spotifyStatus', {}, function (result) {
+        if (result.connected) { connecting = false; loadSpotify(); return; }
+        lunaSpotify('spotifyStart', {}, function (start) {
+          if (!start.returnValue || !/^https:\/\/accounts\.spotify\.com\/authorize\?/.test(start.url || '')) { connecting = false; say(tr('Could not start Spotify authorization.')); return; }
+          say(tr('Authorize Free My TV in Spotify, then return here.'));
+          TV.launch('com.webos.app.browser', {target: start.url}, function () {}); authorizationDeadline = Date.now() + 600000; waitAuthorization();
+        });
+      }); return;
+    }
+    loadSpotify();
+  }
+  function loadSpotify() {
+    if (!local() && !onTV()) { say(tr('Spotify integration is currently available only in the local preview.')); return; }
     if (ready || connecting) return;
     connecting = true; say(tr('Connecting to Spotify…'));
     if (player) { player.connect(); return; }
@@ -61,13 +102,20 @@ var Music = (function () {
     document.head.appendChild(script);
   }
   function spotifyRequest(path, body, callback) {
+    if (onTV()) {
+      var action = path === '/play' ? 'play' : path.indexOf('/search?') === 0 ? 'search' : path.slice(1);
+      var payload = {action: action};
+      if (action === 'search') payload.query = decodeURIComponent(path.split('q=')[1] || '');
+      if (body) { payload.uri = body.uri; payload.device_id = body.device_id; }
+      return lunaSpotify('spotifyRequest', payload, function (result) { callback(result.status || (result.returnValue ? 200 : 502), result.data || {}); });
+    }
     var request = new XMLHttpRequest(); request.open(body ? 'POST' : 'GET', 'http://127.0.0.1:8788' + path, true); request.timeout = 15000;
     request.setRequestHeader('X-FreeMyTV-Local', '1'); if (body) request.setRequestHeader('Content-Type', 'application/json');
     request.onload = function () { var data; try { data = JSON.parse(request.responseText); } catch (e) {} callback(request.status, data || {}); };
     request.onerror = request.ontimeout = function () { callback(0, {}); }; request.send(body ? JSON.stringify(body) : null); return request;
   }
   function spotifyError(code) {
-    say(code === 429 ? tr('Spotify search is temporarily rate limited. Try again later.') : code === 401 ? tr('Renew your Spotify token in the local process environment.') : code === 403 ? tr('The Spotify token does not allow this action.') : tr('Start the updated local Spotify bridge and try again.'));
+    say(code === 429 ? tr('Spotify search is temporarily rate limited. Try again later.') : code === 401 ? (onTV() ? tr('Connect your Spotify account again.') : tr('Renew your Spotify token in the local process environment.')) : code === 403 ? tr('The Spotify token does not allow this action.') : tr('Start the updated local Spotify bridge and try again.'));
   }
   function renderSpotifyResults() {
     if (!spotifyResults) return; spotifyResults.innerHTML = '';
@@ -82,7 +130,7 @@ var Music = (function () {
   }
   function searchSpotify() {
     spotifyQuery = spotifyInput.value.replace(/^\s+|\s+$/g, '').slice(0, 120);
-    if (!local()) { say(tr('Spotify integration is currently available only in the local preview.')); return; }
+    if (!local() && !onTV()) { say(tr('Spotify integration is currently available only in the local preview.')); return; }
     if (!spotifyQuery) return; if (spotifySearchRequest) spotifySearchRequest.abort();
     var stamp = ++spotifySearchGeneration; say(tr('Searching music…'));
     spotifySearchRequest = spotifyRequest('/search?q=' + encodeURIComponent(spotifyQuery), null, function (code, data) {
@@ -210,6 +258,7 @@ var Music = (function () {
       var side = node('div', 'music-content', '', root);
       node('h1', '', tr('Find music on YouTube'), side);
       youtubeInput = node('input', 'music-link', '', side); youtubeInput.type = 'search'; youtubeInput.value = youtubeQuery; youtubeInput.placeholder = tr('Song or artist'); youtubeInput.setAttribute('aria-label', tr('Song or artist'));
+      keyboardSearch(youtubeInput, searchYoutube);
       controls.push(youtubeInput); youtubeInput.onfocus = function () { current = controls.indexOf(youtubeInput); active = true; if (enter) enter(); };
       button(tr('Search'), side, searchYoutube).className = 'music-search-button';
       youtubeResults = node('div', 'music-results', '', side); youtubeResults.setAttribute('aria-label', tr('Search results'));
@@ -224,7 +273,7 @@ var Music = (function () {
     }
     root.className += ' music-spotify';
     var searchBox = node('div', 'music-spotify-search', '', root);
-    spotifyInput = node('input', 'music-link', '', searchBox); spotifyInput.type = 'search'; spotifyInput.value = spotifyQuery; spotifyInput.placeholder = tr('Song or artist'); spotifyInput.setAttribute('aria-label', tr('Song or artist')); controls.push(spotifyInput);
+    spotifyInput = node('input', 'music-link', '', searchBox); spotifyInput.type = 'search'; spotifyInput.value = spotifyQuery; spotifyInput.placeholder = tr('Song or artist'); spotifyInput.setAttribute('aria-label', tr('Song or artist')); controls.push(spotifyInput); keyboardSearch(spotifyInput, searchSpotify);
     spotifyInput.onfocus = function () { current = controls.indexOf(spotifyInput); active = true; if (enter) enter(); };
     button(tr('Search'), searchBox, searchSpotify).className = 'music-search-button'; spotifyResults = node('div', 'music-results', '', searchBox);
     cover = node('div', 'music-cover', '♪', root);
@@ -237,11 +286,11 @@ var Music = (function () {
     button(tr('Previous track'), actions, function () { command('previousTrack'); });
     play = button(tr('Play'), actions, function () { command('togglePlay'); });
     button(tr('Next track'), actions, function () { command('nextTrack'); });
-    button(tr('Disconnect'), actions, function () { if (player) player.disconnect(); player = null; ready = connecting = false; say(tr('Spotify disconnected.')); });
-    node('p', 'music-note', tr('The token is read from the local process environment and is never saved in the app.'), content);
+    button(tr('Disconnect'), actions, function () { if (player) player.disconnect(); clearTimeout(authorizationTimer); clearInterval(sessionKeepalive); sessionKeepalive = 0; if (onTV()) lunaSpotify('spotifyDisconnect', {}, function () {}); player = null; ready = connecting = false; say(tr('Spotify disconnected.')); });
+    node('p', 'music-note', tr('Spotify authorization is kept only in memory. Reconnect after restarting the service.'), content);
     if (track) state({track_window: {current_track: track}, paused: paused});
     renderSpotifyResults();
-    if (!local()) say(tr('Spotify integration is currently available only in the local preview.'));
+    if (!local() && !onTV()) say(tr('Spotify integration is currently available only in the local preview.'));
   }
   function handleKey(e) {
     var key = e.keyCode;
@@ -252,5 +301,5 @@ var Music = (function () {
     else if (key === TV.keys.left || key === TV.keys.right) focus(current + (key === TV.keys.right ? 1 : -1));
     else if (key === TV.keys.ok && controls[current]) { if (controls[current] === spotifyInput) searchSpotify(); else if (controls[current] === youtubeInput) searchYoutube(); else if (controls[current] === keyInput) focus(2); else controls[current].click(); }
   }
-  return {pauseVideo: function () { youtubeCommand('pause'); }, mount: mount, hide: hide, handleKey: handleKey, focusFirst: function () { active = true; focus(0); }, active: function () { return active; }};
+  return {connect: connect, pauseVideo: function () { youtubeCommand('pause'); }, mount: mount, hide: hide, handleKey: handleKey, focusFirst: function () { active = true; focus(0); }, active: function () { return active; }};
 }());
