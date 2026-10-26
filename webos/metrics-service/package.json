@@ -1,1 +1,5 @@
-{"name":"io.freemytv.metrics","version":"1.2.1","main":"service.js"}
+{
+  "name": "io.freemytv.metrics",
+  "version": "1.9.0",
+  "main": "service.js"
+}

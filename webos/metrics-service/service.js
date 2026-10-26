@@ -53,3 +53,5 @@ service.register('trailerPlayer', function (message) {
     var waiting = trailerWaiting; trailerWaiting = []; waiting.forEach(function (m) { m.respond({returnValue: true, url: 'http://127.0.0.1:' + trailerPort + '/player'}); });
   });
 });
+
+require('./spotify')(service);
