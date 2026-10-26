@@ -16,6 +16,6 @@ Use the shared 1120 px shell at x=400, y=88, a title and Back header, 70 px cont
 
 The music source picker lives inside the content region below the main tabs. YouTube search uses the official Data API, with a key held only in session memory. Never persist it or include it in a build. The same iframe remains attached to the stage while switching tabs: only its container changes between the main player and visible miniplayer. Pause video when the app is hidden or its screensaver begins. Explicitly closing the player releases its iframe.
 
-Spotify playback and track search are a local preview prototype. The local helper `tools/spotify_local.py` (kept outside the published changes) reads `SPOTIFY_ACCESS_TOKEN` from the process environment, binds only to loopback and permits the preview origin. It is not a Spotify authorization solution for packaged TVs.
+Spotify playback and track search are a local preview prototype. The local helper `tools/spotify_local.py` reads `SPOTIFY_ACCESS_TOKEN` from the process environment, binds only to loopback and permits the preview origin. It is not a Spotify authorization solution for packaged TVs.
 
 Visible tabs retain stable IDs independent of their displayed positions. Persist the selection and keep at least one tab enabled. Voice search uses browser speech recognition when available. On webOS, focus the native input so the TV keyboard can provide dictation; remote microphone behavior requires validation on the actual device.
