@@ -303,7 +303,7 @@
 
   // MARK: - Focus
 
-  var Z = {SEARCH: 'search', TEXT: 'text', TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', RECS: 'recs', DETAILS: 'details', PHOTOS: 'photos', WIDGETS: 'widgets', WIDGETPICK: 'widgetpick', WIDGETORDER: 'widgetorder'};
+  var Z = {MUSIC: 'music', SEARCH: 'search', TEXT: 'text', TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', RECS: 'recs', DETAILS: 'details', PHOTOS: 'photos', WIDGETS: 'widgets', WIDGETPICK: 'widgetpick', WIDGETORDER: 'widgetorder'};
   var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, widget: 0};
   var cards = [];
 
@@ -313,7 +313,7 @@
     var i, list;
     list = $('tabs').children;
     for (i = 0; i < list.length; i++) {
-      setClass(list[i], 'on', i === st.tab);
+      setClass(list[i], 'on', visibleTabs[i] === st.tab);
       setClass(list[i], 'focus', st.zone === Z.TOP && st.top === i);
     }
     list = $('buttons').children;
@@ -370,15 +370,20 @@
 
   // MARK: - Top: title, tabs, buttons, quotes
 
-  var TAB_KIND = [null, 'movie', 'tv'], TAB_COUNT = 6;
+  var TAB_KIND = [null, 'movie', 'tv'], TAB_COUNT = 7, visibleTabs = [0, 1, 2, 3, 4, 5, 6];
+  function tabNames() { return [tr('Explore'), tr('Movies'), tr('Shows'), tr('Trending'), tr('New releases'), tr('Photos'), tr('Music')]; }
+  function tabPosition(id) { return Math.max(0, visibleTabs.indexOf(id)); }
 
   function renderTop() {
     $('title').textContent = tr('For You');
     var tabs = $('tabs');
     tabs.innerHTML = '';
-    var names = [tr('Explore'), tr('Movies'), tr('Shows'), tr('Trending'), tr('New releases'), tr('Photos')];
+    visibleTabs = Prefs.visibleTabs(); TAB_COUNT = visibleTabs.length;
+    if (visibleTabs.indexOf(st.tab) < 0) { PhotoGallery.hide(); Music.hide(); st.tab = visibleTabs[0]; }
+    st.top = tabPosition(st.tab);
+    var names = tabNames();
     for (var i = 0; i < TAB_COUNT; i++) {
-      var t = el('button', 'tab', tabs, names[i]);
+      var t = el('button', 'tab', tabs, names[visibleTabs[i]]);
       hover(t, Z.TOP, i);
     }
     var buttons = $('buttons');
@@ -406,7 +411,7 @@
   // MARK: - Picks and background
 
   function loadCardImages() {
-    if (st.tab === 5) return;
+    if (st.tab === 5 || st.tab === 6) return;
     var nodes = $('cards').querySelectorAll('.card .img');
     for (var i = 0; i < nodes.length; i++) {
       if (st.tab >= 3 && (i < st.card - 2 || i > st.card + 3)) continue;
@@ -418,6 +423,11 @@
   }
 
   function renderCards() {
+    if (st.tab === 6) {
+      setClass(body, 'no-picks', false); setClass(body, 'photos-tab', false);
+      if (!$('music-panel')) { $('cards').innerHTML = ''; cards = []; Music.mount($('cards'), function (destination) { st.zone = destination === 'shelf' ? Z.SHELF : Z.TOP; st.top = tabPosition(6); updateFocus(); }, function () { if (st.tab === 6 && !sheetOpen()) { st.zone = Z.MUSIC; updateFocus(); } }); }
+      return;
+    }
     if (st.tab === 5) {
       setClass(body, 'no-picks', false); setClass(body, 'photos-tab', true);
       if (!$('photo-gallery')) { $('cards').innerHTML = ''; cards = []; openPhotos(); }
@@ -962,8 +972,15 @@
       TextSetting.open(tr('Custom message'), Prefs.saverText(), function (value) { Prefs.set('saverText', value); }, openSettings);
     }});
     rows.push({label: tr('Start photo slideshow'), value: '›', step: function () { Prefs.set('saverMode', 'photos'); closeSheets(); showSaver(); }});
-    var groups = [tr('Appearance'), tr('Weather'), tr('Widgets'), tr('Content'), tr('Photos'), tr('Screensaver'), tr('Apps and system')];
-    var membership = [[tr('Language'), tr('Theme'), tr('Glass transparency')], [tr('Temperature'), tr('Weather widget'), tr('Weather city'), tr('Forecast')], [tr('Quotes widget'), 'Bitcoin', 'Ethereum', 'Solana', tr('Dollar'), tr('Widget order'), tr('Performance panel')], [tr('TMDB recommendations'), tr('Search titles')], [tr('New composition'), tr('Start photo slideshow')], [tr('Screensaver style'), tr('Custom message'), tr('Preview screensaver')], [tr('Shelf'), tr('TV Settings')]];
+    tabNames().forEach(function (name, id) { rows.push({label: name, tabSetting: true, toggle: Prefs.visibleTabs().indexOf(id) >= 0, step: function () {
+      var list = Prefs.visibleTabs(), at = list.indexOf(id);
+      if (at >= 0 && list.length === 1) { toast(tr('Keep at least one tab visible.')); return; }
+      if (at >= 0) list.splice(at, 1); else list.push(id);
+      Prefs.set('visibleTabs', list); renderTop(); renderCards();
+    }}); });
+    if (settingsPage === tr('Visible tabs')) return rows.filter(function (r) { return r.tabSetting; });
+    var groups = [tr('Visible tabs'), tr('Appearance'), tr('Weather'), tr('Widgets'), tr('Content'), tr('Photos'), tr('Screensaver'), tr('Apps and system')];
+    var membership = [[], [tr('Language'), tr('Theme'), tr('Glass transparency')], [tr('Temperature'), tr('Weather widget'), tr('Weather city'), tr('Forecast')], [tr('Quotes widget'), 'Bitcoin', 'Ethereum', 'Solana', tr('Dollar'), tr('Widget order'), tr('Performance panel')], [tr('TMDB recommendations'), tr('Search titles')], [tr('New composition'), tr('Start photo slideshow')], [tr('Screensaver style'), tr('Custom message'), tr('Preview screensaver')], [tr('Shelf'), tr('TV Settings')]];
     if (settingsPage) return rows.filter(function (r) { return membership[groups.indexOf(settingsPage)].indexOf(r.label) >= 0; });
     return groups.map(function (name) { return {label: name, value: '›', step: function () { settingsPage = name; st.row = 0; }}; });
   }
@@ -1171,7 +1188,7 @@
     PhotoGallery.open(window.LOCAL_PHOTOS || [], function (at, photos, resume) {
       st.zone = Z.PHOTOS;
       showPhoto(at, photos, resume);
-    }, function (destination) { st.zone = destination === 'shelf' ? Z.SHELF : Z.TOP; st.top = 5; updateFocus(); }, $('cards'));
+    }, function (destination) { st.zone = destination === 'shelf' ? Z.SHELF : Z.TOP; st.top = tabPosition(5); updateFocus(); }, $('cards'));
   }
 
   function tvSettings() {
@@ -1226,7 +1243,7 @@
 
   function selectTab(i) {
     if (i === st.tab) return;
-    PhotoGallery.hide();
+    PhotoGallery.hide(); Music.hide();
     st.tab = i; st.card = 0;
     $('cards').style.webkitTransform = $('cards').style.transform = 'translateX(0)';
     if (i === 5) { $('cards').innerHTML = ''; cards = []; openPhotos(); }
@@ -1240,6 +1257,7 @@
         if (dx) st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
         else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
+          if (st.tab === 6) { st.zone = Z.MUSIC; Music.focusFirst(); return; }
           if (st.tab === 5) { st.zone = Z.PHOTOS; PhotoGallery.focusFirst(); return; }
           if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
           else { st.zone = Z.TOP; st.top = st.tab; }
@@ -1253,8 +1271,9 @@
       case Z.TOP:
         if (dx) {
           st.top = Math.max(0, Math.min(TAB_COUNT + 3, st.top + dx));
-          if (st.top < TAB_COUNT) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
+          if (st.top < TAB_COUNT) selectTab(visibleTabs[st.top]);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
+          if (st.tab === 6) { st.zone = Z.MUSIC; Music.focusFirst(); return; }
           if (st.tab === 5) { st.zone = Z.PHOTOS; PhotoGallery.focusFirst(); return; }
           if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < TAB_COUNT ? 0 : cards.length - 1); }
           else st.zone = Z.SHELF;
@@ -1339,7 +1358,7 @@
       if (zone !== Z.DRAWER && (st.zone === Z.DRAWER || st.zone === Z.WIDGETS) && zone !== Z.SHELF) return;
       if (zone === Z.SHELF && (st.zone === Z.DRAWER || st.zone === Z.WIDGETS)) closeDrawer();
       st.zone = zone;
-      if (zone === Z.TOP) { st.top = index; if (index < TAB_COUNT) selectTab(index); }
+      if (zone === Z.TOP) { st.top = index; if (index < TAB_COUNT) selectTab(visibleTabs[index]); }
       else if (zone === Z.CARDS) st.card = index;
       else if (zone === Z.SHELF) st.shelf = index;
       else if (zone === Z.DRAWER) st.drawer = index;
@@ -1385,6 +1404,7 @@
 
   function showSaver() {
     hideSaver();
+    Music.pauseVideo();
     saverOn = true; Metrics.setVisible(false);
     ScreenRest.start($('saver'), saverPhotos());
     setClass($('saver'), 'on', true);
@@ -1414,6 +1434,7 @@
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
     if (poke()) { e.preventDefault(); return; }
+    if (st.zone === Z.MUSIC) { st.zone = Z.MUSIC; Music.handleKey(e); return; }
     if (st.zone === Z.SEARCH) { MediaSearch.handleKey(e); return; }
     if (st.zone === Z.TEXT) return;
     if (photoOpen) {
@@ -1482,7 +1503,7 @@
     closeSheets();
     st.zone = Z.SHELF;
     st.shelf = 0;
-    if (st.tab !== 0) { st.tab = 0; renderCards(); }
+    if (st.tab !== visibleTabs[0]) selectTab(visibleTabs[0]); st.top = 0;
     updateFocus();
   }
 

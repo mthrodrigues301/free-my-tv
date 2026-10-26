@@ -69,6 +69,7 @@ var Prefs = (function () {
     forecast: function () { return pick('forecast', 'hours') === 'days' ? 'days' : 'hours'; },
     quotes: function () { return pick('quotes', CONFIG.showCrypto !== false); },
     coin: function (i) { var c = pick('coins', null); return c ? c[i] !== false : true; },
+    visibleTabs: function () { var saved = pick('visibleTabs', null), all = [0, 1, 2, 3, 4, 5, 6]; if (!Array.isArray(saved)) return all; var list = all.filter(function (id) { return saved.indexOf(id) >= 0; }); return list.length ? list : [0]; },
     shelf: function () { return pick('shelf', null); },
     recommendations: function () { return RecommendationFilters.normalize(pick('recommendations', null)); },
     transparency: function () { var n = Number(pick('transparency', 90)); return isFinite(n) ? Math.max(0, Math.min(95, n)) : 90; },
