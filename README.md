@@ -284,3 +284,86 @@ No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with 
 ## License
 
 [MIT](LICENSE). Fork it, change it, ship it.
+
+
+## Credenciais das integrações: YouTube, Spotify e TMDB
+
+Este guia usa os painéis oficiais. Nunca coloque chaves pessoais, access tokens,
+refresh tokens ou Client Secrets no GitHub, em capturas de tela ou em exemplos.
+O Client ID do Spotify é público; ele não autoriza acesso à conta sozinho.
+
+### YouTube: criar e atualizar a chave de API
+
+1. Entre em https://console.cloud.google.com/ e crie ou selecione um projeto.
+2. Abra **APIs e serviços → Biblioteca**, procure **YouTube Data API v3** e ative.
+3. Em **APIs e serviços → Credenciais → Criar credenciais**, escolha **Chave de API**.
+4. Edite a chave e limite as APIs permitidas a **YouTube Data API v3**.
+5. No preview, configure a restrição de site para `http://127.0.0.1:8770/*`.
+   Essa restrição é específica do preview: um pacote webOS tem outra origem.
+   Não remova restrições indiscriminadamente para corrigir um erro na TV.
+6. Em **Música → YouTube**, insira a chave no campo da sessão e busque pelo nome
+   da música ou artista. A chave permanece apenas em memória; recarregar o app
+   exige inseri-la novamente. Não existe token de login obrigatório para pesquisar
+   vídeos públicos com essa integração.
+
+Para trocar uma chave, crie outra no painel, teste no app e só então revogue a antiga.
+Erros de busca podem indicar API desativada, restrição de origem ou cota esgotada.
+Não é necessário fornecer a senha da conta Google nem tokens de sessão.
+
+Documentação: https://developers.google.com/youtube/data/getting-started
+
+### Spotify: Client ID, autorização e renovação
+
+1. Acesse https://developer.spotify.com/dashboard usando sua conta Premium.
+2. Clique em **Create app**. Se o botão não aparecer na janela estreita, amplie a
+   janela: o layout compacto do painel pode ocultar esse link.
+3. Informe nome e descrição de uso pessoal. Selecione **Web API** e **Web Playback SDK**.
+4. Cadastre exatamente `http://127.0.0.1:8787/callback` como Redirect URI.
+5. Leia e aceite os termos pessoalmente, e salve o aplicativo.
+6. Em **Basic Information**, copie o **Client ID** público. Não use o Client Secret
+   no app da TV. Não confunda Client ID com um access token do tutorial do SDK.
+7. Em **Música → Spotify → Conectar Spotify**, autorize o aplicativo na página
+   oficial do Spotify. O fluxo usa Authorization Code com PKCE, sem Client Secret.
+   No navegador da própria TV, o retorno loopback chega ao serviço da TV.
+8. Caso autorize no notebook durante desenvolvimento, o retorno precisa chegar à
+   TV por um túnel SSH local. `127.0.0.1` é sempre o dispositivo em que o navegador
+   está aberto; não é o endereço IP da TV na rede. Não exponha a porta de retorno
+   publicamente nem publique a URL completa de autorização/callback em logs.
+
+O serviço mantém access token, refresh token e verificador PKCE somente na memória.
+A renovação usa o refresh token enquanto a sessão existir. Ao reiniciar ou encerrar
+esse serviço, conecte a conta novamente. **Desconectar** elimina a sessão local;
+para revogar a autorização no Spotify, use a seção de aplicativos da sua conta.
+Nunca copie o token pessoal do tutorial para `music.js`, `config.properties`, `.env`,
+README, pacote IPK ou Git. Não é necessário gerar e colar tokens manualmente.
+
+O helper opcional `tools/spotify_local.py` é específico do preview e recebe
+`SPOTIFY_ACCESS_TOKEN` pelo ambiente do processo. Não crie arquivos de token para ele.
+O token temporário desse helper não substitui a autorização PKCE na TV.
+
+A disponibilidade do player depende do suporte a DRM/EME do webOS e das permissões
+concedidas. Criar o Client ID não confirma compatibilidade de reprodução. Um erro
+429 exige aguardar; não tente resolver criando contas/chaves para contornar cotas.
+
+Documentação:
+- https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow
+- https://developer.spotify.com/documentation/web-api/concepts/redirect_uri
+- https://developer.spotify.com/documentation/web-playback-sdk
+
+### TMDB: chave v3 e token de leitura v4
+
+1. Entre em https://www.themoviedb.org/ e abra **Configurações → API**.
+2. Solicite uma chave de desenvolvedor e preencha a descrição do uso pessoal.
+3. O painel apresenta **API Key (v3 auth)** e **API Read Access Token (v4 auth)**.
+   São credenciais diferentes: este projeto usa a chave v3 em `tmdb_key`.
+4. No arquivo privado `config.properties`, preencha `tmdb_key` e gere um novo pacote
+   antes de instalar na TV. Não coloque o token de leitura v4 no campo da chave v3.
+5. Mantenha `config.properties` ignorado pelo Git. Pacotes personalizados contêm a
+   configuração e não devem ser enviados para releases públicas.
+
+Para atualizar a chave, altere apenas o arquivo privado, gere o pacote e reinstale
+sem limpar os dados do app. Confira sugestões e busca antes de revogar a anterior.
+Se uma credencial vazar, revogue ou substitua pelo painel do provedor; apagar apenas
+um commit não remove uma chave já exposta do histórico ou de cópias do repositório.
+
+Documentação: https://developer.themoviedb.org/docs/getting-started
