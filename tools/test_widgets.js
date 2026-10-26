@@ -8,7 +8,7 @@ function element() {
   Object.defineProperty(n, 'innerHTML', {set: function () { n.children = []; }});
   return n;
 }
-var context = {setTimeout: function (fn) { fn(); }, trf: function (s, v) { return s.replace('{widget}', v.widget); }, tr: function (s) { return s; }, TV: {keys: {back: 461, up: 38, down: 40, left: 37, right: 39, ok: 13}},
+var context = {SettingsUI: {focus: function (n) { n.focus(); }, decorate: function () {}}, setTimeout: function (fn) { fn(); }, trf: function (s, v) { return s.replace('{widget}', v.widget); }, tr: function (s) { return s; }, TV: {keys: {back: 461, up: 38, down: 40, left: 37, right: 39, ok: 13}},
   document: {createElement: element, activeElement: element(), getElementById: function () { return {appendChild: function (n) { sheet = n; }}; }}};
 vm.runInNewContext(fs.readFileSync('web/widgets.js', 'utf8'), context);
 var c = context.WidgetCatalog;
