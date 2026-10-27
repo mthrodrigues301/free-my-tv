@@ -3,7 +3,7 @@
   "services": [
     {
       "name": "io.freemytv.metrics",
-      "description": "System performance counters, local video player and memory-only Spotify authorization",
+      "description": "System performance counters, local video player and encrypted persistent Spotify authorization",
       "commands": [
         {
           "name": "sample",

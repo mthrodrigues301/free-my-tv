@@ -1,14 +1,23 @@
-/* PKCE OAuth and Spotify transport. Credentials remain in service memory only. */
+/* PKCE OAuth and Spotify transport. Refresh credentials are sealed by the webOS TEE; access tokens stay in memory. */
 'use strict';
 module.exports = function (service) {
   var crypto = require('crypto'), https = require('https'), http = require('http'), qs = require('querystring'), url = require('url');
   var clientId = 'f14f2730b173417b8d2dfc6e37688fc9', redirect = 'http://127.0.0.1:8787/callback';
+  var store = require('./spotify-store')(service), restoring = false, restoreWait = [];
   var pending = null, session = null, server = null, retryAt = 0, refreshing = false, refreshWait = [], diagnostic = 'not_started', activity = null, authGeneration = 0, lastSeen = Date.now();
   function holdSession() { if (!activity && service.activityManager) service.activityManager.create('spotify-session', function (created) { activity = created; }); }
   setInterval(function () {
     if (pending && pending.expires < Date.now()) pending = null;
     if (!pending && Date.now() - lastSeen > 120000) { session = null; if (activity && service.activityManager) service.activityManager.complete(activity, {}, function () {}); activity = null; }
   }, 30000);
+  function restore(done) {
+    if (session) { done(); return; }
+    restoreWait.push(done); if (restoring) return; restoring = true; var generation = authGeneration;
+    store.load(function (refresh) {
+      if (refresh && generation === authGeneration && !session) { session = {access: '', refresh: refresh, expires: 0}; holdSession(); }
+      restoring = false; var waiting = restoreWait; restoreWait = []; waiting.forEach(function (fn) { fn(); });
+    });
+  }
   function random() { return crypto.randomBytes(32).toString('hex'); }
   function own(message) { return String(message.sender || '').split(' ')[0] === 'io.freemytv'; }
   function answer(message, value) { message.respond(value); }
@@ -31,14 +40,21 @@ module.exports = function (service) {
     var text = qs.stringify(body);
     request('accounts.spotify.com', '/api/token', 'POST', {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(text)}, text, done);
   }
-  function access(done) {
+  function access(done) { restore(function () { accessReady(done); }); }
+  function accessReady(done) {
     if (!session) { done(null); return; }
     if (session.expires > Date.now() + 60000) { done(session.access); return; }
     refreshWait.push(done); if (refreshing) return; refreshing = true; var old = session;
     tokenRequest({grant_type: 'refresh_token', refresh_token: old.refresh, client_id: clientId}, function (code, value) {
-      if (session === old && code === 200 && value.access_token) session = {access: value.access_token, refresh: value.refresh_token || old.refresh, expires: Date.now() + (value.expires_in || 3600) * 1000};
-      else if (session === old && (code === 400 || code === 401)) session = null;
-      refreshing = false; var waiting = refreshWait; refreshWait = []; waiting.forEach(function (fn) { fn(session && session !== old ? session.access : null); });
+      function complete() { refreshing = false; var waiting = refreshWait; refreshWait = []; waiting.forEach(function (fn) { fn(session && session !== old ? session.access : null); }); }
+      if (session !== old) { complete(); return; }
+      if (code === 200 && value.access_token) {
+        session = {access: value.access_token, refresh: value.refresh_token || old.refresh, expires: Date.now() + (value.expires_in || 3600) * 1000};
+        if (value.refresh_token && value.refresh_token !== old.refresh) { store.save(value.refresh_token, complete); return; }
+      } else if (code === 400 && value.error === 'invalid_grant') {
+        session = null; authGeneration++; store.clear(complete); return;
+      }
+      complete();
     });
   }
   function callback(req, res) {
@@ -52,7 +68,10 @@ module.exports = function (service) {
       if (attempt.generation !== authGeneration) { res.writeHead(409); res.end('Authorization cancelled.'); return; }
       if (code !== 200 || !value.access_token || !value.refresh_token) { res.writeHead(502); res.end('Could not authorize Spotify. Start again on the TV.'); return; }
       lastSeen = Date.now(); session = {access: value.access_token, refresh: value.refresh_token, expires: Date.now() + (value.expires_in || 3600) * 1000};
-      res.writeHead(200); res.end('<h1>Spotify conectado</h1><p>Volte ao Free My TV na sua TV. Nenhum token foi salvo em arquivo.</p>');
+      store.save(value.refresh_token, function (saved) {
+        if (attempt.generation !== authGeneration) { res.writeHead(409); res.end('Authorization cancelled.'); return; }
+        res.writeHead(200); res.end(saved ? '<h1>Spotify conectado</h1><p>Autorização protegida na TV. Volte ao Free My TV.</p>' : '<h1>Spotify conectado nesta sessão</h1><p>O armazenamento protegido não está disponível. Será necessário reconectar após reiniciar.</p>');
+      });
     });
   }
   service.register('spotifyStart', function (message) {
@@ -65,13 +84,16 @@ module.exports = function (service) {
     if (server) { start(); return; }
     server = http.createServer(callback); server.on('error', function () { server = null; answer(message, {returnValue: false, error: 'callback_port_unavailable'}); }); server.listen(8787, '127.0.0.1', start);
   });
-  service.register('spotifyStatus', function (message) { if (own(message)) lastSeen = Date.now(); answer(message, {returnValue: true, connected: !!session, pending: !!pending && pending.expires > Date.now(), storage: 'memory_only', player: diagnostic}); });
+  service.register('spotifyStatus', function (message) {
+    function status() { answer(message, {returnValue: true, connected: !!session, pending: !!pending && pending.expires > Date.now(), storage: store.status(), player: diagnostic}); }
+    if (own(message)) { lastSeen = Date.now(); restore(status); } else status();
+  });
   service.register('spotifyReport', function (message) { if (!own(message)) { denied(message); return; } var status = message.payload && message.payload.status; if (['ready', 'initialization_error', 'authentication_error', 'account_error', 'authorization_required'].indexOf(status) >= 0) diagnostic = status; answer(message, {returnValue: true}); });
   service.register('spotifyToken', function (message) {
     if (!own(message)) { denied(message); return; }
     access(function (token) { answer(message, token ? {returnValue: true, access_token: token} : {returnValue: false, status: 401, error: 'authorization_required'}); });
   });
-  service.register('spotifyDisconnect', function (message) { if (!own(message)) { denied(message); return; } authGeneration++; session = pending = null; answer(message, {returnValue: true}); });
+  service.register('spotifyDisconnect', function (message) { if (!own(message)) { denied(message); return; } authGeneration++; session = pending = null; store.clear(function (cleared) { answer(message, {returnValue: !!cleared, error: cleared ? '' : 'secure_storage_unavailable'}); }); });
   service.register('spotifyRequest', function (message) {
     if (!own(message)) { denied(message); return; }
     var payload = message.payload || {}, path, method = 'GET', body = null;
