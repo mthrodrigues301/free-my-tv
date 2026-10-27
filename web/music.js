@@ -286,10 +286,11 @@ var Music = (function () {
     button(tr('Previous track'), actions, function () { command('previousTrack'); });
     play = button(tr('Play'), actions, function () { command('togglePlay'); });
     button(tr('Next track'), actions, function () { command('nextTrack'); });
-    button(tr('Disconnect'), actions, function () { if (player) player.disconnect(); clearTimeout(authorizationTimer); clearInterval(sessionKeepalive); sessionKeepalive = 0; if (onTV()) lunaSpotify('spotifyDisconnect', {}, function () {}); player = null; ready = connecting = false; say(tr('Spotify disconnected.')); });
-    node('p', 'music-note', tr('Spotify authorization is kept only in memory. Reconnect after restarting the service.'), content);
+    button(tr('Disconnect'), actions, function () { if (player) player.disconnect(); clearTimeout(authorizationTimer); clearInterval(sessionKeepalive); sessionKeepalive = 0; if (onTV()) lunaSpotify('spotifyDisconnect', {}, function (result) { if (!result.returnValue) say(tr('Could not remove the saved authorization. Try disconnecting again.')); }); player = null; ready = connecting = false; say(tr('Spotify disconnected.')); });
+    node('p', 'music-note', (onTV() ? tr('Spotify authorization is encrypted on this TV when secure storage is available. Disconnect removes it.') : tr('Spotify authorization is kept only in memory. Reconnect after restarting the service.')), content);
     if (track) state({track_window: {current_track: track}, paused: paused});
     renderSpotifyResults();
+    if (onTV() && !ready && !connecting) lunaSpotify('spotifyStatus', {}, function (result) { if (root && source === 'spotify' && result.connected) connect(); });
     if (!local() && !onTV()) say(tr('Spotify integration is currently available only in the local preview.'));
   }
   function handleKey(e) {
