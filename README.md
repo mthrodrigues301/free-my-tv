@@ -330,10 +330,27 @@ Documentação: https://developers.google.com/youtube/data/getting-started
    está aberto; não é o endereço IP da TV na rede. Não exponha a porta de retorno
    publicamente nem publique a URL completa de autorização/callback em logs.
 
-O serviço mantém access token, refresh token e verificador PKCE somente na memória.
-A renovação usa o refresh token enquanto a sessão existir. Ao reiniciar ou encerrar
-esse serviço, conecte a conta novamente. **Desconectar** elimina a sessão local;
-para revogar a autorização no Spotify, use a seção de aplicativos da sua conta.
+Na TV, o refresh token é criptografado com AES-256-GCM pelo **Keymanager3 do
+webOS** e somente o texto cifrado é armazenado em um banco DB8 privado do serviço.
+A chave de criptografia fica no ambiente protegido (TEE) da TV; ela não é exportada
+para o código, arquivos ou GitHub. Access token e verificador PKCE ficam em memória.
+Ao abrir Música → Spotify, a autorização salva é recuperada e o acesso é renovado.
+A rotação do refresh token também atualiza o registro criptografado.
+
+**Desconectar** elimina a chave e o registro salvo. Para revogar a autorização no
+Spotify, use a seção de aplicativos da sua conta. Revogação, remoção dos dados do
+app ou desinstalação podem exigir uma nova autorização.
+
+O Keymanager3 é documentado para webOS TV 24 ou posterior. A compatibilidade e as
+permissões precisam ser verificadas no aparelho. Se o cofre não estiver disponível,
+o app mantém somente a sessão em memória e informa isso no retorno da autorização;
+**não existe alternativa que salve o token em texto puro**. O preview local continua
+usando somente memória.
+
+Referências: [Keymanager3 da LG](https://webostv.developer.lge.com/develop/references/keymanager3),
+[DB8 da LG](https://webostv.developer.lge.com/develop/references/database) e
+[renovação de tokens do Spotify](https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens).
+
 Nunca copie o token pessoal do tutorial para `music.js`, `config.properties`, `.env`,
 README, pacote IPK ou Git. Não é necessário gerar e colar tokens manualmente.
 
