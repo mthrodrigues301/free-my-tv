@@ -1,6 +1,7 @@
 /* Focused OAuth isolation and PKCE checks. No real credentials or network. */
 'use strict';
 var assert = require('assert'), vm = require('vm'), fs = require('fs'), crypto = require('crypto'), qs = require('querystring'), handlers = {}, callback;
+var sealedRefresh = '';
 var outgoing = [], response = {status: 200, data: {access_token: 'test-access', refresh_token: 'test-refresh', expires_in: 3600}};
 var fakeHttps = {request: function (options, received) {
   var req = {setTimeout: function () {}, on: function () {}, write: function (text) { outgoing.push({options: options, body: text}); }, destroy: function () {}, end: function () {
@@ -10,6 +11,7 @@ var fakeHttps = {request: function (options, received) {
 }};
 var service = {register: function (name, fn) { handlers[name] = fn; }};
 var context = {setInterval: function () {}, module: {exports: {}}, Buffer: Buffer, Date: Date, require: function (name) {
+  if (name === './spotify-store') return function () { return {status: function () { return 'encrypted_tv'; }, load: function (done) { done(sealedRefresh); }, save: function (value, done) { sealedRefresh = value; done(true); }, clear: function (done) { sealedRefresh = ''; done(true); }}; };
   if (name === 'https') return fakeHttps;
   if (name === 'http') return {createServer: function (fn) { callback = fn; return {on: function () {}, listen: function (port, host, done) { assert.strictEqual(port, 8787); assert.strictEqual(host, '127.0.0.1'); done(); }}; }};
   return require(name);
@@ -30,5 +32,9 @@ assert.strictEqual(call('spotifyToken').access_token, 'test-access');
 assert(!JSON.stringify(call('spotifyStatus')).match(/test-access|test-refresh/));
 assert.strictEqual(call('spotifyRequest', {action: 'delete-account'}).status, 400);
 assert.strictEqual(call('spotifyRequest', {action: 'play', uri: 'https://example.com'}).status, 400);
+context.module.exports(service); // A new service instance must restore and renew without OAuth.
+assert.strictEqual(call('spotifyStatus').connected, true);
+assert.strictEqual(call('spotifyToken').access_token, 'test-access');
+assert.strictEqual(qs.parse(outgoing[outgoing.length - 1].body).grant_type, 'refresh_token');
 call('spotifyDisconnect'); assert.strictEqual(call('spotifyToken').status, 401);
-console.log('Spotify PKCE, state validation, caller isolation, memory-only session and disconnect passed.');
+console.log('Spotify PKCE, state validation, caller isolation, session and disconnect passed.');
